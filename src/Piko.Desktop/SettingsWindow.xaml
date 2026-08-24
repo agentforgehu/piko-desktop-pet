@@ -1,0 +1,44 @@
+<Window x:Class="Piko.Desktop.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Piko 设置"
+        Width="460"
+        Height="535"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Background="#F7F4EE"
+        FontFamily="Microsoft YaHei UI">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock FontSize="24" FontWeight="SemiBold" Foreground="#27333A" Text="Piko 设置" />
+            <TextBlock Margin="0,6,0,18" Foreground="#647178" Text="所有感知都在本地进行，可以分别关闭。" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1">
+            <CheckBox x:Name="AutonomousCheck" Margin="0,8" FontSize="15" Content="允许自主活动" />
+            <CheckBox x:Name="WindowCheck" Margin="0,8" FontSize="15" Content="允许探索窗口、攀爬和跳跃" />
+            <CheckBox x:Name="PointerCheck" Margin="0,8" FontSize="15" Content="感知空闲鼠标并短暂驻足" />
+            <CheckBox x:Name="FileCheck" Margin="0,8" FontSize="15" Content="观察下载目录和系统复制活动" />
+            <CheckBox x:Name="MessagesCheck" Margin="0,8" FontSize="15" Content="显示 Piko 的状态气泡" />
+            <CheckBox x:Name="ClickThroughCheck" Margin="0,8" FontSize="15" Content="鼠标穿透（用 Ctrl+Alt+P 召回）" />
+            <CheckBox x:Name="StartupCheck" Margin="0,8" FontSize="15" Content="登录 Windows 后自动启动" />
+        </StackPanel>
+
+        <Border Grid.Row="2" Margin="0,20,0,14" Padding="14" Background="#E9F4EF" CornerRadius="10">
+            <TextBlock Foreground="#35564A" TextWrapping="Wrap"
+                       Text="文件感知不会读取文件内容，也不会把文件名写入日志。当前版本只提供“活动中/估算中”提示，不承诺所有应用都能提供精确百分比。未来 ESP32 会读取同一份语义状态，只显示 Nomi 风格眼睛。" />
+        </Border>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Width="86" Height="34" Margin="0,0,10,0" Click="Cancel_Click">取消</Button>
+            <Button Width="96" Height="34" IsDefault="True" Click="Save_Click">保存</Button>
+        </StackPanel>
+    </Grid>
+</Window>
