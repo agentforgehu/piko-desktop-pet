@@ -26,7 +26,7 @@
 - 自包含包：ZIP 66,251,036 bytes；独立解压运行 exit code 0。
 - SHA256：`cdfb9cbf07b01fb90ff52e5fe06c57f0a0e074ed96ca50f65d92fa5a557440c8`。
 - 私有仓库：`https://github.com/agentforgehu/piko-desktop-pet`。
-- 远端主提交：`a670025e9feab07da40a129076ce812d98a197a3`。
+- 远端源码基线提交：`a670025e9feab07da40a129076ce812d98a197a3`；最终验收文档提交：`930ab1641fdbd7715c1e462b472c15d3d6c9f7b1`。
 - 正式发布：`https://github.com/agentforgehu/piko-desktop-pet/releases/tag/v0.1.0`；ZIP 与 SHA256 文件均已在页面验证。
 
 ## 发布门禁
