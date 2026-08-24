@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '1.0.0-alpha.1',
+    [string]$Version = '0.2.1',
     [int]$DurationSeconds = 1800,
     [int]$SampleSeconds = 2,
     [int]$MaximumDesktopWorkingSetMb = 350,

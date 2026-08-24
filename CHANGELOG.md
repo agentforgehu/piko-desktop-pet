@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0-alpha.1 — 2026-08-24
+## 0.2.1 — 2026-08-24
 
 - 加入每用户独立 Runtime、受保护命名管道、健康检查、监督重启和安全降级。
 - 加入版本化 Context Event、Windows 感知、Situation Engine 与 Intervention Policy。

@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $workspaceRoot = (Resolve-Path (Join-Path $projectRoot '..\..')).Path
-$publishedExe = Join-Path $projectRoot 'releases\Piko-1.0.0-alpha.1-win-x64\Piko.exe'
+$publishedExe = Join-Path $projectRoot 'releases\Piko-0.2.1-win-x64\Piko.exe'
 $localDotnet = Join-Path $workspaceRoot 'work\.dotnet\dotnet.exe'
 $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
 

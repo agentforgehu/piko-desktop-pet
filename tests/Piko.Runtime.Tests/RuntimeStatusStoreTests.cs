@@ -16,7 +16,7 @@ public sealed class RuntimeStatusStoreTests
             var store = new RuntimeStatusStore(path);
             var status = new RuntimeStatusSnapshot(
                 1,
-                "1.0.0-alpha.1",
+                "0.2.1",
                 42,
                 DateTimeOffset.UnixEpoch,
                 DateTimeOffset.UnixEpoch.AddSeconds(1),

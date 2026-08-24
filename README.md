@@ -2,7 +2,7 @@
 
 Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是悬浮聊天按钮，而是把真实窗口、屏幕边缘、鼠标、文件活动和已授权的开发事件当作生活环境。
 
-当前开发版本：`1.0.0-alpha.1`。稳定公开版仍为 `0.1.0`。
+当前预览版本：`0.2.1`。正式 `1.0` 仍在生产收口阶段。
 
 ## 已实现
 
@@ -29,7 +29,7 @@ Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是
 
 从 [GitHub Release v0.1.0](https://github.com/agentforgehu/piko-desktop-pet/releases/tag/v0.1.0) 下载 `Piko-0.1.0-win-x64.zip`，解压后双击 `Piko.exe`。发布包自带运行时，不需要安装 .NET。
 
-1.0 Alpha 正在生产收口，当前本地构建可使用 `scripts/publish.ps1` 生成单文件当前用户安装器、自包含便携包、更新清单和 VS Code 扩展。Alpha 尚未签名；正式 1.0 的发布脚本默认拒绝生成未签名稳定版。
+`0.2.1` 是未签名的 Pre-release，可使用 `scripts/publish.ps1` 生成单文件当前用户安装器、自包含便携包、更新清单和 VS Code 扩展。正式 `1.0` 的发布脚本默认拒绝生成未签名稳定版。
 
 常用操作：
 
@@ -51,7 +51,7 @@ Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是
 .\scripts\verify.ps1
 .\scripts\run-piko.ps1
 .\scripts\publish.ps1
-.\scripts\stability.ps1 -Version 1.0.0-alpha.1 -DurationSeconds 1800
+.\scripts\stability.ps1 -Version 0.2.1 -DurationSeconds 1800
 ```
 
 也可以直接使用标准命令：

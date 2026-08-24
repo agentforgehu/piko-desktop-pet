@@ -23,7 +23,7 @@
 | 代码签名 | 需要证书或 Trusted Signing | EXTERNAL |
 | 生产美术/音频 | 当前原创矢量占位形象可运行 | EXTERNAL |
 | 性能与稳定性 | 全量自动化、真实进程 smoke、隔离长稳和 CI 资源预算；60 秒 Alpha 证据：Runtime 70.11 MB、Desktop 259.87 MB、29 次心跳全健康 | DONE（正式 RC 需 30 分钟报告） |
-| 1.0 Release | 公共仓库已有 0.1.0；本地 1.0.0-alpha.1 包已生成并通过 smoke | ACTIVE |
+| 1.0 Release | 当前公开稳定版为 0.1.0；0.2.1 作为生产能力预览版，正式 1.0 仍需完成外部门禁 | ACTIVE |
 
 ## 当前验证基线
 
@@ -39,4 +39,4 @@
 - VS Code 扩展通过严格 TypeScript 检查、编译和 VSIX 打包；
 - Desktop 与 Runtime 均有真实进程 smoke，Runtime 心跳 JSON 通过 schema/healthy 门禁；
 - 默认无云端请求；
-- 1.0 Alpha 已可安装使用；正式 1.0 尚未达到代码签名、30 分钟 RC 长稳和真实 AI 账号验收门禁。
+- 0.2.1 预览版已可安装使用；正式 1.0 尚未达到代码签名、30 分钟 RC 长稳和真实 AI 账号验收门禁。

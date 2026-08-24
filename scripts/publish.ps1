@@ -1,5 +1,7 @@
 param(
-    [string]$Version = '1.0.0-alpha.1',
+    [string]$Version = '0.2.1',
+    [ValidateSet('auto', 'preview', 'stable')]
+    [string]$Channel = 'auto',
     [string]$SignToolPath = '',
     [string]$SigningCertificateThumbprint = '',
     [string]$TimestampUrl = 'http://timestamp.digicert.com',
@@ -56,9 +58,15 @@ if (!$resolvedPublishDirectory.StartsWith($resolvedProjectRoot + [IO.Path]::Dire
     throw 'Refusing to publish outside the Piko project directory.'
 }
 
-$isPrerelease = $version.Contains('-')
+$releaseChannel = if ($Channel -ne 'auto') {
+    $Channel
+} elseif ($version.Contains('-') -or [int]$versionParts[0] -eq 0) {
+    'preview'
+} else {
+    'stable'
+}
 $shouldSign = -not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)
-if (-not $isPrerelease -and -not $shouldSign -and -not $AllowUnsignedStable) {
+if ($releaseChannel -eq 'stable' -and -not $shouldSign -and -not $AllowUnsignedStable) {
     throw 'A stable release requires Authenticode signing. Supply -SigningCertificateThumbprint and -SignToolPath, or explicitly use -AllowUnsignedStable for non-production testing.'
 }
 if ($shouldSign) {
@@ -237,12 +245,11 @@ try {
     $setupHash = (Get-FileHash -LiteralPath $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -LiteralPath $setupChecksumPath -Value "$setupHash  $(Split-Path -Leaf $setupPath)" -Encoding ascii
 
-    $channel = if ($isPrerelease) { 'preview' } else { 'stable' }
     $setupAssetName = Split-Path -Leaf $setupPath
     $manifest = [ordered]@{
         schemaVersion = 1
         version = $version
-        channel = $channel
+        channel = $releaseChannel
         publishedAt = [DateTimeOffset]::UtcNow.ToString('O')
         releasePage = "https://github.com/agentforgehu/piko-desktop-pet/releases/tag/v$version"
         installer = [ordered]@{
