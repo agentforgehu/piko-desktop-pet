@@ -12,7 +12,7 @@
 | WP-05 本地后端 | 设置、日志、崩溃恢复、快照、设备状态 | DONE |
 | WP-06 自动与真实桌面验证 | Release build、18 tests、WPF smoke | DONE |
 | WP-07 Windows x64 发布 | 自包含 exe、zip、SHA256、独立冒烟 | DONE |
-| WP-08 GitHub 交付 | 新仓库、main、v0.1.0、Release asset | ACTIVE |
+| WP-08 GitHub 交付 | 新仓库、main、v0.1.0、Release asset | DONE |
 
 ## 2026-08-24 运行证据
 
@@ -25,6 +25,9 @@
 - 当前设备投影结果：`standing / normal`。
 - 自包含包：ZIP 66,251,036 bytes；独立解压运行 exit code 0。
 - SHA256：`cdfb9cbf07b01fb90ff52e5fe06c57f0a0e074ed96ca50f65d92fa5a557440c8`。
+- 私有仓库：`https://github.com/agentforgehu/piko-desktop-pet`。
+- 远端主提交：`a670025e9feab07da40a129076ce812d98a197a3`。
+- 正式发布：`https://github.com/agentforgehu/piko-desktop-pet/releases/tag/v0.1.0`；ZIP 与 SHA256 文件均已在页面验证。
 
 ## 发布门禁
 
@@ -34,3 +37,4 @@
 4. 校验 ZIP SHA256。
 5. Git 初始化后只提交源代码和文档，不提交 `bin/obj/releases`。
 6. 新建 GitHub 仓库，推送 `main`，创建 `v0.1.0` Release 并上传 ZIP 与校验文件。
+
