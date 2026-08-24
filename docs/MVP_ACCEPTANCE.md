@@ -17,6 +17,7 @@
 | 隐私日志/快照 | 标题无关快照 + 无文件名日志 | 快照 round-trip 测试 | PASS |
 | ESP32 状态接口 | 原子 JSON 投影 | 简化眼型映射测试、真实文件输出 | PASS |
 | Release 包 | 自包含 win-x64 发布脚本 | 解压后独立冒烟 exit 0、SHA256 通过 | PASS |
-| GitHub 仓库与 Release | CI/Release workflow | 远端 URL、tag、asset | PENDING |
+| GitHub 仓库与 Release | CI/Release workflow | 私有仓库 `agentforgehu/piko-desktop-pet`、tag `v0.1.0`、ZIP 与 SHA256 asset 已在线验证 | PASS |
 
 当前自动化测试数：18。最终发布前必须重新执行 `scripts/verify.ps1` 和自包含包 `--smoke-test`。
+
