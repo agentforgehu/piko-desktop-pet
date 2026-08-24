@@ -5,7 +5,7 @@ using Piko.Context.Windows.Native;
 
 namespace Piko.Context.Windows.Observation;
 
-public sealed class WindowsContextProbe
+public sealed class WindowsContextProbe : IWindowsContextProbe
 {
     private readonly ForegroundApplicationClassifier _classifier;
 

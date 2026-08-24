@@ -1,4 +1,6 @@
 using Piko.Context.Events;
+using Piko.Context.Situations;
+using Piko.Context.Windows.Observation;
 using Piko.Runtime.Ipc;
 
 namespace Piko.Runtime.Tests;
@@ -40,7 +42,10 @@ public sealed class ExternalContextIpcTests
                 GitAwarenessEnabled = true
             });
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var host = new PikoRuntimeHost(new RuntimePaths(root), pipeName: pipeName);
+        var host = new PikoRuntimeHost(
+            new RuntimePaths(root),
+            new ActiveWindowsContextProbe(),
+            pipeName);
         var hostTask = host.RunAsync(timeout.Token);
         var client = new RuntimeIpcClient(pipeName, TimeSpan.FromSeconds(5));
 
@@ -73,7 +78,10 @@ public sealed class ExternalContextIpcTests
         var root = CreateRoot();
         RuntimeUserSettingsFile.Save(Path.Combine(root, "runtime-settings.json"), settings);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var host = new PikoRuntimeHost(new RuntimePaths(root), pipeName: pipeName);
+        var host = new PikoRuntimeHost(
+            new RuntimePaths(root),
+            new ActiveWindowsContextProbe(),
+            pipeName);
         var hostTask = host.RunAsync(timeout.Token);
         var client = new RuntimeIpcClient(pipeName, TimeSpan.FromSeconds(5));
 
@@ -107,5 +115,15 @@ public sealed class ExternalContextIpcTests
         var root = Path.Combine(Path.GetTempPath(), "PikoExternalContextTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private sealed class ActiveWindowsContextProbe : IWindowsContextProbe
+    {
+        public WindowsContextSnapshot Capture(int idleThresholdSeconds = 120) => new(
+            DateTimeOffset.UtcNow,
+            PresenceState.Active,
+            0,
+            ApplicationCategory.Unknown,
+            false);
     }
 }

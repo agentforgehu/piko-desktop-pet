@@ -22,7 +22,7 @@ public sealed class PikoRuntimeHost
         PropertyNameCaseInsensitive = true
     };
     private readonly RuntimePaths _paths;
-    private readonly WindowsContextProbe _probe;
+    private readonly IWindowsContextProbe _probe;
     private readonly string? _pipeName;
     private readonly IAiProvider? _aiProviderOverride;
     private readonly SqliteMemoryStore? _memoryStoreOverride;
@@ -34,7 +34,7 @@ public sealed class PikoRuntimeHost
 
     public PikoRuntimeHost(
         RuntimePaths paths,
-        WindowsContextProbe? probe = null,
+        IWindowsContextProbe? probe = null,
         string? pipeName = null,
         IAiProvider? aiProvider = null,
         SqliteMemoryStore? memoryStore = null)
