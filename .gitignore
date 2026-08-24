@@ -12,3 +12,6 @@ artifacts/
 *.tmp
 *.zip
 *.sha256.txt
+**/node_modules/
+integrations/vscode/dist/
+*.vsix

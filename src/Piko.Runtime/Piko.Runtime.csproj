@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>Piko.Runtime</AssemblyName>
+    <RootNamespace>Piko.Runtime</RootNamespace>
+    <Version>1.0.0-alpha.1</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Product>Piko Runtime</Product>
+    <Description>Local-first per-user background runtime for Piko Desktop Pet.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Piko.Runtime.Tests" />
+    <ProjectReference Include="..\Piko.Context\Piko.Context.csproj" />
+    <ProjectReference Include="..\Piko.Context.Windows\Piko.Context.Windows.csproj" />
+    <ProjectReference Include="..\Piko.Agent\Piko.Agent.csproj" />
+    <ProjectReference Include="..\Piko.Runtime.Client\Piko.Runtime.Client.csproj" />
+    <ProjectReference Include="..\Piko.Memory\Piko.Memory.csproj" />
+  </ItemGroup>
+</Project>

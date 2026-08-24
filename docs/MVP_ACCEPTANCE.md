@@ -20,4 +20,3 @@
 | GitHub 仓库与 Release | CI/Release workflow | 私有仓库 `agentforgehu/piko-desktop-pet`、tag `v0.1.0`、ZIP 与 SHA256 asset 已在线验证 | PASS |
 
 当前自动化测试数：18。最终发布前必须重新执行 `scripts/verify.ps1` 和自包含包 `--smoke-test`。
-

@@ -7,9 +7,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Piko</AssemblyName>
     <RootNamespace>Piko.Desktop</RootNamespace>
-    <Version>0.1.0</Version>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <FileVersion>0.1.0.0</FileVersion>
+    <Version>1.0.0-alpha.1</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
     <Product>Piko Desktop Pet</Product>
     <Description>A local-first Windows desktop pet that lives on real window surfaces.</Description>
     <Authors>Piko contributors</Authors>
@@ -17,5 +17,17 @@
   <ItemGroup>
     <ProjectReference Include="..\Piko.World\Piko.World.csproj" />
     <ProjectReference Include="..\Piko.World.Windows\Piko.World.Windows.csproj" />
+    <ProjectReference Include="..\Piko.Runtime.Client\Piko.Runtime.Client.csproj" />
+    <ProjectReference Include="..\Piko.Update\Piko.Update.csproj" />
+    <ProjectReference Include="..\Piko.Runtime\Piko.Runtime.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
+  <Target Name="CopyRuntimeForDevelopment" AfterTargets="Build">
+    <ItemGroup>
+      <RuntimeDevelopmentFiles Include="..\Piko.Runtime\bin\$(Configuration)\net8.0-windows\**\*" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(RuntimeDevelopmentFiles)"
+      DestinationFiles="@(RuntimeDevelopmentFiles->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
+  </Target>
 </Project>

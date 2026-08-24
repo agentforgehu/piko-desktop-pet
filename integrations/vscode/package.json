@@ -1,0 +1,52 @@
+{
+  "name": "piko-context-bridge",
+  "displayName": "Piko Context Bridge",
+  "description": "Sends privacy-safe development summaries to the local Piko Runtime.",
+  "version": "1.0.0-alpha.1",
+  "publisher": "piko-desktop-pet",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agentforgehu/piko-desktop-pet.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:piko.showRuntimeStatus"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "piko.showRuntimeStatus",
+        "title": "Piko: Show Runtime Status"
+      }
+    ],
+    "configuration": {
+      "title": "Piko",
+      "properties": {
+        "piko.contextBridge.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Send local build, test, diagnostic-count, and Git summaries to Piko Runtime. Piko's desktop privacy settings remain authoritative."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "check": "tsc -p ./ --noEmit",
+    "package": "npx @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.7.2"
+  }
+}

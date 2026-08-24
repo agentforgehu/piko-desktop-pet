@@ -5,6 +5,9 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 using Piko.Desktop.Services;
+using Piko.Runtime;
+using Piko.Runtime.Security;
+using Piko.Update;
 using Piko.World.Behavior;
 using Piko.World.Compiler;
 using Piko.World.Geometry;
@@ -21,16 +24,20 @@ public partial class PetWindow : Window
     private readonly AppLogger _logger;
     private readonly FileActivityObserver _fileActivityObserver;
     private readonly DeviceStatePublisher _deviceStatePublisher;
+    private readonly RuntimeProcessManager _runtimeProcessManager;
+    private readonly UpdateService _updateService;
     private readonly WindowsSnapshotProvider _snapshotProvider = new();
     private readonly DesktopWorldCompiler _worldCompiler = new();
     private readonly PetController _controller = new();
     private readonly DispatcherTimer _worldTimer;
     private readonly DispatcherTimer _animationTimer;
+    private readonly DispatcherTimer _runtimeSupervisorTimer;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Forms.NotifyIcon _trayIcon;
     private readonly Forms.ContextMenuStrip _trayMenu;
     private readonly bool _recoveredFromCrash;
     private readonly bool _smokeTest;
+    private readonly TimeSpan? _automaticShutdownAfter;
 
     private PikoSettings _settings;
     private DesktopWorld? _world;
@@ -44,26 +51,32 @@ public partial class PetWindow : Window
     private System.Drawing.Point _mouseDownPoint;
     private bool _preparedForExit;
     private long _visualFrame;
+    private bool _runtimeCheckInProgress;
 
     public PetWindow(
         PikoSettings settings,
         bool recoveredFromCrash,
         bool smokeTest,
+        TimeSpan? automaticShutdownAfter,
         AppPaths paths,
         SettingsStore settingsStore,
         AppLogger logger,
         FileActivityObserver fileActivityObserver,
-        DeviceStatePublisher deviceStatePublisher)
+        DeviceStatePublisher deviceStatePublisher,
+        RuntimeProcessManager runtimeProcessManager)
     {
         InitializeComponent();
         _settings = settings;
         _recoveredFromCrash = recoveredFromCrash;
         _smokeTest = smokeTest;
+        _automaticShutdownAfter = automaticShutdownAfter;
         _paths = paths;
         _settingsStore = settingsStore;
         _logger = logger;
         _fileActivityObserver = fileActivityObserver;
         _deviceStatePublisher = deviceStatePublisher;
+        _runtimeProcessManager = runtimeProcessManager;
+        _updateService = new UpdateService(paths.Root, logger);
 
         _trayMenu = BuildTrayMenu();
         _trayIcon = new Forms.NotifyIcon
@@ -77,7 +90,10 @@ public partial class PetWindow : Window
 
         try
         {
-            StartupRegistration.Apply(_settings.LaunchAtStartup);
+            if (!_smokeTest)
+            {
+                StartupRegistration.Apply(_settings.LaunchAtStartup);
+            }
         }
         catch (Exception exception)
         {
@@ -96,6 +112,12 @@ public partial class PetWindow : Window
         };
         _animationTimer.Tick += (_, _) => TickPet();
 
+        _runtimeSupervisorTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(30)
+        };
+        _runtimeSupervisorTimer.Tick += async (_, _) => await CheckRuntimeAsync();
+
         SourceInitialized += Window_SourceInitialized;
         Loaded += Window_Loaded;
     }
@@ -110,6 +132,7 @@ public partial class PetWindow : Window
         _preparedForExit = true;
         _worldTimer.Stop();
         _animationTimer.Stop();
+        _runtimeSupervisorTimer.Stop();
         SaveSettings(cleanExit: true);
 
         if (_handle != 0)
@@ -150,11 +173,17 @@ public partial class PetWindow : Window
         _worldTimer.Start();
         _animationTimer.Start();
 
-        if (_smokeTest)
+        if (!_smokeTest)
+        {
+            _runtimeSupervisorTimer.Start();
+            _ = CheckRuntimeAsync();
+        }
+
+        if (_automaticShutdownAfter is { } shutdownAfter)
         {
             var shutdownTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromSeconds(3)
+                Interval = shutdownAfter
             };
             shutdownTimer.Tick += (_, _) =>
             {
@@ -387,12 +416,144 @@ public partial class PetWindow : Window
         menu.Items.Add(demo);
 
         menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("问 Piko…", null, (_, _) => Dispatcher.Invoke(OpenAgent));
+        menu.Items.Add("查看 / 删除本地记忆…", null, (_, _) => Dispatcher.Invoke(OpenMemory));
+        menu.Items.Add("查看后台状态", null, (_, _) => Dispatcher.Invoke(ShowRuntimeStatus));
+        menu.Items.Add("检查正式版更新…", null, (_, _) => Dispatcher.Invoke(() => _ = CheckForUpdatesAsync()));
         menu.Items.Add("设置…", null, (_, _) => Dispatcher.Invoke(OpenSettings));
         menu.Items.Add("导出隐私诊断快照", null, (_, _) => Dispatcher.Invoke(ExportDiagnosticSnapshot));
         menu.Items.Add("打开本地状态目录", null, (_, _) => OpenStateFolder());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("退出 Piko", null, (_, _) => Dispatcher.Invoke(() => System.Windows.Application.Current.Shutdown()));
         return menu;
+    }
+
+    private void OpenAgent()
+    {
+        var window = new AgentWindow(_runtimeProcessManager, _logger)
+        {
+            Owner = this
+        };
+        window.Show();
+    }
+
+    private void OpenMemory()
+    {
+        var window = new MemoryWindow(_runtimeProcessManager, _logger)
+        {
+            Owner = this
+        };
+        window.Show();
+    }
+
+    private async void ShowRuntimeStatus()
+    {
+        var status = await _runtimeProcessManager.TryGetStatusAsync();
+        if (status is null)
+        {
+            System.Windows.MessageBox.Show(
+                "Piko 后台当前未连接。桌宠仍可运行，但行为感知与 AI Agent 暂不可用。",
+                "Piko 后台",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        System.Windows.MessageBox.Show(
+            $"状态：{status.Health}\n版本：{status.Version}\n情境：{status.Situation}\n心跳：{status.LastHeartbeatAt.ToLocalTime():HH:mm:ss}",
+            "Piko 后台",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            var result = await _updateService.CheckAsync();
+            if (!result.IsUpdateAvailable)
+            {
+                System.Windows.MessageBox.Show(
+                    $"当前版本 {PikoProductInfo.Version} 已是最新正式版。",
+                    "Piko 更新",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            if (!_updateService.CanInstallAutomatically(result.Manifest))
+            {
+                var open = System.Windows.MessageBox.Show(
+                    $"发现版本 {result.Manifest.Version}。当前构建尚未配置可信发布者证书，因此不会自动执行下载文件。是否打开 GitHub Release 页面？",
+                    "Piko 更新",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information);
+                if (open == MessageBoxResult.Yes)
+                {
+                    Process.Start(new ProcessStartInfo(result.Manifest.ReleasePage.ToString()) { UseShellExecute = true })?.Dispose();
+                }
+
+                return;
+            }
+
+            var install = System.Windows.MessageBox.Show(
+                $"发现已签名版本 {result.Manifest.Version}。下载、验证并安装吗？Piko 会自动重启。",
+                "Piko 更新",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (install != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            if (await _updateService.DownloadVerifyAndStartAsync(result.Manifest))
+            {
+                System.Windows.Application.Current.Shutdown();
+            }
+            else
+            {
+                System.Windows.MessageBox.Show(
+                    "更新包未通过签名或完整性校验，未执行安装。",
+                    "Piko 更新",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Could not check for updates", exception);
+            System.Windows.MessageBox.Show(
+                "暂时无法获取正式版更新清单。当前版本不会受到影响。",
+                "Piko 更新",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
+    private async Task CheckRuntimeAsync()
+    {
+        if (_runtimeCheckInProgress)
+        {
+            return;
+        }
+
+        _runtimeCheckInProgress = true;
+        try
+        {
+            var status = await _runtimeProcessManager.EnsureStartedAsync();
+            if (status is null)
+            {
+                _logger.Info("Piko continues in desktop-only mode because Runtime is unavailable");
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Piko Runtime connection failed", exception);
+        }
+        finally
+        {
+            _runtimeCheckInProgress = false;
+        }
     }
 
     private void OpenSettings()
@@ -402,6 +563,31 @@ public partial class PetWindow : Window
         {
             _settings = result with { LastExitWasClean = false };
             _settingsStore.Save(_settings);
+            try
+            {
+                var credentials = new WindowsCredentialStore();
+                if (dialog.ClearApiKey)
+                {
+                    credentials.Delete(RuntimeSecretNames.OpenAiApiKey);
+                }
+                else if (dialog.ApiKeyUpdate is { } apiKey)
+                {
+                    credentials.Save(RuntimeSecretNames.OpenAiApiKey, apiKey);
+                }
+            }
+            catch (Exception exception)
+            {
+                _logger.Error("Could not update AI credential", exception);
+                System.Windows.MessageBox.Show(
+                    "API Key 无法保存到 Windows 凭据管理器。其他设置已保存，AI 将保持不可用。",
+                    "Piko AI 设置",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            RuntimeUserSettingsFile.Save(
+                _paths.RuntimeSettingsFile,
+                _settings.ToRuntimeUserSettings());
+            _ = RestartRuntimeAfterSettingsChangeAsync();
             try
             {
                 StartupRegistration.Apply(_settings.LaunchAtStartup);
@@ -419,6 +605,18 @@ public partial class PetWindow : Window
             {
                 NativeWindowServices.ConfigurePetWindow(_handle, _settings.ClickThrough);
             }
+        }
+    }
+
+    private async Task RestartRuntimeAfterSettingsChangeAsync()
+    {
+        try
+        {
+            await _runtimeProcessManager.RestartAsync();
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Could not restart Runtime after settings changed", exception);
         }
     }
 

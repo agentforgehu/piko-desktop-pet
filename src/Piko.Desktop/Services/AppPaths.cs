@@ -2,9 +2,9 @@ namespace Piko.Desktop.Services;
 
 public sealed class AppPaths
 {
-    public AppPaths()
+    public AppPaths(string? root = null)
     {
-        Root = Path.Combine(
+        Root = root ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PikoDesktopPet");
         Directory.CreateDirectory(Root);
@@ -17,4 +17,6 @@ public sealed class AppPaths
     public string LogFile => Path.Combine(Root, "piko.log");
 
     public string DeviceStateFile => Path.Combine(Root, "device-state.json");
+
+    public string RuntimeSettingsFile => Path.Combine(Root, "runtime-settings.json");
 }

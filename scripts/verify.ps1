@@ -29,8 +29,46 @@ try {
     & $dotnet test 'Piko.sln' -c Release --no-build
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    & $dotnet 'src\Piko.Desktop\bin\Release\net8.0-windows\Piko.dll' --smoke-test
-    exit $LASTEXITCODE
+    $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
+    if (-not $npmCommand) {
+        throw 'Node.js/npm is required to verify the VS Code Context Bridge.'
+    }
+
+    Push-Location 'integrations\vscode'
+    try {
+        if (-not (Test-Path -LiteralPath 'node_modules')) {
+            & $npmCommand.Source ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
+        & $npmCommand.Source run check
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $npmCommand.Source run compile
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
+
+    $desktopSmokeRoot = Join-Path $workspaceRoot 'work\desktop-smoke'
+    New-Item -ItemType Directory -Force -Path $desktopSmokeRoot | Out-Null
+    & $dotnet 'src\Piko.Desktop\bin\Release\net8.0-windows\Piko.dll' --smoke-test --data-dir $desktopSmokeRoot
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    $runtimeSmokeRoot = Join-Path $workspaceRoot 'work\runtime-smoke'
+    New-Item -ItemType Directory -Force -Path $runtimeSmokeRoot | Out-Null
+    & $dotnet 'src\Piko.Runtime\bin\Release\net8.0-windows\Piko.Runtime.dll' --smoke-test --data-dir $runtimeSmokeRoot
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    $runtimeStatusFile = Join-Path $runtimeSmokeRoot 'runtime-status.json'
+    if (-not (Test-Path -LiteralPath $runtimeStatusFile)) {
+        throw 'Runtime smoke test did not create a status snapshot.'
+    }
+
+    $runtimeStatus = Get-Content -LiteralPath $runtimeStatusFile -Raw | ConvertFrom-Json
+    if ($runtimeStatus.schemaVersion -ne 1 -or $runtimeStatus.health -ne 'healthy') {
+        throw 'Runtime smoke status is not healthy or has an unsupported schema.'
+    }
+
+    exit 0
 } finally {
     Pop-Location
 }

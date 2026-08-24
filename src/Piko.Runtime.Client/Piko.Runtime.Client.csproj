@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>Piko.Runtime.Client</AssemblyName>
+    <RootNamespace>Piko.Runtime</RootNamespace>
+    <Version>1.0.0-alpha.1</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Piko.Context\Piko.Context.csproj" />
+  </ItemGroup>
+</Project>

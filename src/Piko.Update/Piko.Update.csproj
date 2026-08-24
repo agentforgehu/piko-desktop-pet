@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>Piko.Update</AssemblyName>
+    <RootNamespace>Piko.Update</RootNamespace>
+    <Version>1.0.0-alpha.1</Version>
+  </PropertyGroup>
+</Project>

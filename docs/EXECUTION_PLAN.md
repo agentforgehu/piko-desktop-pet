@@ -37,4 +37,3 @@
 4. 校验 ZIP SHA256。
 5. Git 初始化后只提交源代码和文档，不提交 `bin/obj/releases`。
 6. 新建 GitHub 仓库，推送 `main`，创建 `v0.1.0` Release 并上传 ZIP 与校验文件。
-

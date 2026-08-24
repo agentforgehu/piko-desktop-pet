@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Piko 设置"
         Width="460"
-        Height="535"
+        Height="740"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         Background="#F7F4EE"
@@ -11,8 +11,8 @@
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -21,7 +21,8 @@
             <TextBlock Margin="0,6,0,18" Foreground="#647178" Text="所有感知都在本地进行，可以分别关闭。" />
         </StackPanel>
 
-        <StackPanel Grid.Row="1">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,8">
+        <StackPanel>
             <CheckBox x:Name="AutonomousCheck" Margin="0,8" FontSize="15" Content="允许自主活动" />
             <CheckBox x:Name="WindowCheck" Margin="0,8" FontSize="15" Content="允许探索窗口、攀爬和跳跃" />
             <CheckBox x:Name="PointerCheck" Margin="0,8" FontSize="15" Content="感知空闲鼠标并短暂驻足" />
@@ -29,11 +30,26 @@
             <CheckBox x:Name="MessagesCheck" Margin="0,8" FontSize="15" Content="显示 Piko 的状态气泡" />
             <CheckBox x:Name="ClickThroughCheck" Margin="0,8" FontSize="15" Content="鼠标穿透（用 Ctrl+Alt+P 召回）" />
             <CheckBox x:Name="StartupCheck" Margin="0,8" FontSize="15" Content="登录 Windows 后自动启动" />
+            <Separator Margin="0,10,0,6" />
+            <TextBlock Margin="0,4" FontSize="15" FontWeight="SemiBold" Text="后台感知与 Agent 权限" />
+            <CheckBox x:Name="DevelopmentCheck" Margin="0,8" FontSize="15" Content="感知开发摘要（构建、测试、错误数量）" />
+            <CheckBox x:Name="GitCheck" Margin="0,8" FontSize="15" Content="感知 Git 摘要（分支和变更数量，不读取代码）" />
+            <CheckBox x:Name="AgentReadCheck" Margin="0,8" FontSize="15" Content="允许 Agent 只读工具（写入仍需逐次批准）" />
+            <CheckBox x:Name="MemoryCheck" Margin="0,8" FontSize="15" Content="启用加密本地记忆（可随时查看和全部删除）" />
+            <CheckBox x:Name="CloudAiCheck" Margin="0,8" FontSize="15" Content="启用云端 AI（仅发送经过过滤的情境和主动提问）" />
+            <TextBlock Margin="0,8,0,3" Text="AI API 地址" />
+            <TextBox x:Name="AiEndpointText" Height="30" Padding="6,3" />
+            <TextBlock Margin="0,8,0,3" Text="模型" />
+            <TextBox x:Name="AiModelText" Height="30" Padding="6,3" />
+            <TextBlock Margin="0,8,0,3" Text="API Key（留空则保持 Windows 凭据管理器中的现有值）" />
+            <PasswordBox x:Name="AiApiKeyPassword" Height="30" Padding="6,3" />
+            <CheckBox x:Name="ClearAiKeyCheck" Margin="0,8" Content="删除已保存的 API Key" />
         </StackPanel>
+        </ScrollViewer>
 
         <Border Grid.Row="2" Margin="0,20,0,14" Padding="14" Background="#E9F4EF" CornerRadius="10">
             <TextBlock Foreground="#35564A" TextWrapping="Wrap"
-                       Text="文件感知不会读取文件内容，也不会把文件名写入日志。当前版本只提供“活动中/估算中”提示，不承诺所有应用都能提供精确百分比。未来 ESP32 会读取同一份语义状态，只显示 Nomi 风格眼睛。" />
+                       Text="标题、路径、终端正文、截图和麦克风默认关闭。开发与 Git 开关只放行摘要；Agent 写文件、运行命令或联网仍必须逐次批准。ESP32 只读取 Nomi 风格语义状态。" />
         </Border>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">

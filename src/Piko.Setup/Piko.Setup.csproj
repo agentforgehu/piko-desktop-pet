@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>Piko.Setup</AssemblyName>
+    <RootNamespace>Piko.Setup</RootNamespace>
+    <Version>1.0.0-alpha.1</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Product>Piko Desktop Pet Setup</Product>
+    <Description>Per-user installer and uninstaller for Piko Desktop Pet.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource
+      Include="$(PikoInstallerPayload)"
+      LogicalName="Piko.Payload.zip"
+      Condition="'$(PikoInstallerPayload)' != '' and Exists('$(PikoInstallerPayload)')" />
+    <InternalsVisibleTo Include="Piko.Setup.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Piko.Runtime.Client\Piko.Runtime.Client.csproj" />
+  </ItemGroup>
+</Project>

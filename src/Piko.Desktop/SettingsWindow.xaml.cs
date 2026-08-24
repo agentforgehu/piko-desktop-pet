@@ -18,13 +18,22 @@ public partial class SettingsWindow : Window
         MessagesCheck.IsChecked = settings.ShowMessages;
         ClickThroughCheck.IsChecked = settings.ClickThrough;
         StartupCheck.IsChecked = settings.LaunchAtStartup;
+        DevelopmentCheck.IsChecked = settings.DevelopmentAwarenessEnabled;
+        GitCheck.IsChecked = settings.GitAwarenessEnabled;
+        AgentReadCheck.IsChecked = settings.AgentReadEnabled;
+        MemoryCheck.IsChecked = settings.MemoryEnabled;
+        CloudAiCheck.IsChecked = settings.CloudAiEnabled;
+        AiEndpointText.Text = settings.AiEndpoint;
+        AiModelText.Text = settings.AiModel;
     }
 
     public PikoSettings? Result { get; private set; }
+    public string? ApiKeyUpdate { get; private set; }
+    public bool ClearApiKey { get; private set; }
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        Result = _original with
+        var candidate = _original with
         {
             AutonomousBehaviorEnabled = AutonomousCheck.IsChecked == true,
             WindowExplorationEnabled = WindowCheck.IsChecked == true,
@@ -32,8 +41,34 @@ public partial class SettingsWindow : Window
             FileActivityAwarenessEnabled = FileCheck.IsChecked == true,
             ShowMessages = MessagesCheck.IsChecked == true,
             ClickThrough = ClickThroughCheck.IsChecked == true,
-            LaunchAtStartup = StartupCheck.IsChecked == true
+            LaunchAtStartup = StartupCheck.IsChecked == true,
+            DevelopmentAwarenessEnabled = DevelopmentCheck.IsChecked == true,
+            GitAwarenessEnabled = GitCheck.IsChecked == true,
+            AgentReadEnabled = AgentReadCheck.IsChecked == true,
+            MemoryEnabled = MemoryCheck.IsChecked == true,
+            CloudAiEnabled = CloudAiCheck.IsChecked == true,
+            AiEndpoint = AiEndpointText.Text.Trim(),
+            AiModel = AiModelText.Text.Trim()
         };
+        try
+        {
+            candidate.ToRuntimeUserSettings().Validate();
+        }
+        catch (ArgumentException exception)
+        {
+            System.Windows.MessageBox.Show(
+                exception.Message,
+                "Piko AI 设置",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        Result = candidate;
+        ApiKeyUpdate = string.IsNullOrWhiteSpace(AiApiKeyPassword.Password)
+            ? null
+            : AiApiKeyPassword.Password;
+        ClearApiKey = ClearAiKeyCheck.IsChecked == true;
         DialogResult = true;
     }
 

@@ -21,10 +21,11 @@ public sealed class SettingsStore
     {
         try
         {
-            return File.Exists(_paths.SettingsFile)
+            var settings = File.Exists(_paths.SettingsFile)
                 ? JsonSerializer.Deserialize<PikoSettings>(File.ReadAllText(_paths.SettingsFile), JsonOptions)
                   ?? new PikoSettings()
                 : new PikoSettings();
+            return settings.UpgradeOrDefault();
         }
         catch
         {
