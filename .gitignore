@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+TestResults/
+coverage/
+releases/
+artifacts/
+*.log
+*.tmp
+*.zip
+*.sha256.txt
+
