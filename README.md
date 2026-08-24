@@ -22,7 +22,7 @@ Piko 是一个 Windows 10/11 x64 桌面宠物 MVP。它不是悬浮聊天按钮�
 
 ## 直接使用
 
-从 GitHub Releases 下载 `Piko-0.1.0-win-x64.zip`，解压后双击 `Piko.exe`。发布包自带运行时，不需要安装 .NET。
+从 [GitHub Release v0.1.0](https://github.com/agentforgehu/piko-desktop-pet/releases/tag/v0.1.0) 下载 `Piko-0.1.0-win-x64.zip`，解压后双击 `Piko.exe`。发布包自带运行时，不需要安装 .NET。
 
 常用操作：
 
@@ -79,3 +79,4 @@ Piko 运行时会写入：
 ## 许可
 
 MIT License。角色占位形象为本项目原创矢量组合，不包含 QQ 宠物、蔚来 Nomi 或其他第三方角色素材。
+
