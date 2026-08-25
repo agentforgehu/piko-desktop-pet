@@ -52,6 +52,8 @@ public partial class PetWindow : Window
     private bool _preparedForExit;
     private long _visualFrame;
     private bool _runtimeCheckInProgress;
+    private bool _userHidden;
+    private bool _suppressedForFullscreen;
 
     public PetWindow(
         PikoSettings settings,
@@ -104,7 +106,11 @@ public partial class PetWindow : Window
         {
             Interval = TimeSpan.FromMilliseconds(450)
         };
-        _worldTimer.Tick += (_, _) => CaptureWorld();
+        _worldTimer.Tick += (_, _) =>
+        {
+            UpdateFullscreenSuppression();
+            CaptureWorld();
+        };
 
         _animationTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
@@ -168,6 +174,7 @@ public partial class PetWindow : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        UpdateFullscreenSuppression();
         CaptureWorld();
         _previousTick = _clock.Elapsed;
         _worldTimer.Start();
@@ -662,14 +669,17 @@ public partial class PetWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            if (IsVisible)
+            if (_suppressedForFullscreen)
             {
-                Hide();
+                _userHidden = false;
+                return;
             }
-            else
+
+            _userHidden = IsVisible;
+            ApplyVisibilityState();
+            if (!_userHidden)
             {
-                Show();
-                QueueCommand(PetCommand.Recall);
+                _pendingCommand = PetCommand.Recall;
             }
         });
     }
@@ -678,13 +688,43 @@ public partial class PetWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            if (!IsVisible)
-            {
-                Show();
-            }
-
+            _userHidden = false;
+            ApplyVisibilityState();
             _pendingCommand = command;
         });
+    }
+
+    private void UpdateFullscreenSuppression()
+    {
+        if (_smokeTest || _handle == 0)
+        {
+            return;
+        }
+
+        var shouldSuppress = NativeWindowServices.IsForegroundWindowFullscreen(_handle);
+        if (shouldSuppress == _suppressedForFullscreen)
+        {
+            return;
+        }
+
+        _suppressedForFullscreen = shouldSuppress;
+        ApplyVisibilityState();
+        _logger.Info(shouldSuppress
+            ? "Piko hidden while a fullscreen application is active"
+            : "Piko restored after fullscreen application ended");
+    }
+
+    private void ApplyVisibilityState()
+    {
+        var shouldShow = !_userHidden && !_suppressedForFullscreen;
+        if (shouldShow && !IsVisible)
+        {
+            Show();
+        }
+        else if (!shouldShow && IsVisible)
+        {
+            Hide();
+        }
     }
 
     private void SaveSettings(bool cleanExit)
