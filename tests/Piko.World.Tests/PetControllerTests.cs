@@ -10,6 +10,29 @@ public sealed class PetControllerTests
     private readonly DesktopWorldCompiler _compiler = new();
 
     [Fact]
+    public void FullscreenPolicy_RecognizesExactAndBorderlessCoverage()
+    {
+        var monitor = new PixelRect(1920, 0, 3840, 1080);
+
+        Assert.True(FullscreenWindowPolicy.CoversMonitor(
+            new PixelRect(1920, 0, 3840, 1080),
+            monitor));
+        Assert.True(FullscreenWindowPolicy.CoversMonitor(
+            new PixelRect(1919, -1, 3841, 1081),
+            monitor));
+    }
+
+    [Fact]
+    public void FullscreenPolicy_DoesNotTreatMaximizedWorkAreaAsFullscreen()
+    {
+        var monitor = new PixelRect(0, 0, 1920, 1080);
+        var maximizedWorkArea = new PixelRect(0, 0, 1920, 1040);
+
+        Assert.False(FullscreenWindowPolicy.CoversMonitor(maximizedWorkArea, monitor));
+        Assert.False(FullscreenWindowPolicy.CoversMonitor(default, monitor));
+    }
+
+    [Fact]
     public void Initialize_LandsOnPrimaryMonitorFloor()
     {
         var world = World();
