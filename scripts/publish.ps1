@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.2.1',
+    [string]$Version = '0.2.2',
     [ValidateSet('auto', 'preview', 'stable')]
     [string]$Channel = 'auto',
     [string]$SignToolPath = '',
@@ -100,6 +100,49 @@ function Invoke-PikoCodeSign {
     }
 }
 
+function Invoke-PikoSmokeTest {
+    param(
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $process = Start-Process `
+        -FilePath $Executable `
+        -ArgumentList $Arguments `
+        -WindowStyle Hidden `
+        -Wait `
+        -PassThru
+    if ($process.ExitCode -ne 0) {
+        throw "Smoke test failed for $(Split-Path -Leaf $Executable) with exit code $($process.ExitCode)."
+    }
+}
+
+function Compress-PikoArchive {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            Compress-Archive `
+                -LiteralPath $Source `
+                -DestinationPath $Destination `
+                -CompressionLevel Optimal `
+                -ErrorAction Stop
+            return
+        } catch {
+            if ($attempt -eq 5) {
+                throw
+            }
+            if (Test-Path -LiteralPath $Destination) {
+                Remove-Item -LiteralPath $Destination -Force
+            }
+            Start-Sleep -Milliseconds (400 * $attempt)
+        }
+    }
+}
+
 $env:DOTNET_CLI_HOME = Join-Path $workspaceRoot 'work\dotnet-home'
 $env:NUGET_PACKAGES = Join-Path $workspaceRoot 'work\nuget-packages'
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
@@ -174,9 +217,27 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     $extensionRoot = Join-Path $projectRoot 'integrations\vscode'
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if (-not $npm) {
+        $npm = Get-Command npm -ErrorAction SilentlyContinue
+    }
+    if (-not $npm) {
+        throw 'Node.js and npm are required to build the VS Code extension.'
+    }
+    Push-Location $extensionRoot
+    try {
+        & $npm.Source ci --ignore-scripts --no-audit --no-fund
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $npm.Source run check
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $npm.Source run compile
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
     $vsce = Join-Path $extensionRoot 'node_modules\.bin\vsce.cmd'
     if (-not (Test-Path -LiteralPath $vsce)) {
-        throw 'VS Code extension dependencies are missing. Run npm ci in integrations/vscode.'
+        throw 'VS Code extension packaging tool is unavailable after npm ci.'
     }
     Push-Location $extensionRoot
     try {
@@ -205,12 +266,14 @@ try {
     New-Item -ItemType Directory -Force -Path $desktopSmokeRoot | Out-Null
     New-Item -ItemType Directory -Force -Path $runtimeSmokeRoot | Out-Null
 
-    & (Join-Path $publishDirectory 'Piko.exe') --smoke-test --data-dir $desktopSmokeRoot
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & (Join-Path $publishDirectory 'Piko.Runtime.exe') --smoke-test --data-dir $runtimeSmokeRoot
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Invoke-PikoSmokeTest `
+        -Executable (Join-Path $publishDirectory 'Piko.exe') `
+        -Arguments @('--smoke-test', '--data-dir', $desktopSmokeRoot)
+    Invoke-PikoSmokeTest `
+        -Executable (Join-Path $publishDirectory 'Piko.Runtime.exe') `
+        -Arguments @('--smoke-test', '--data-dir', $runtimeSmokeRoot)
 
-    Compress-Archive -LiteralPath $publishDirectory -DestinationPath $archivePath -CompressionLevel Optimal
+    Compress-PikoArchive -Source $publishDirectory -Destination $archivePath
     $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -LiteralPath $checksumPath -Value "$hash  $(Split-Path -Leaf $archivePath)" -Encoding ascii
     $extensionHash = (Get-FileHash -LiteralPath $extensionPath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -236,8 +299,7 @@ try {
 
     Copy-Item -LiteralPath (Join-Path $setupPublishDirectory 'Piko.Setup.exe') -Destination $setupPath
     Invoke-PikoCodeSign -Files @($setupPath)
-    & $setupPath --smoke-test --silent
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Invoke-PikoSmokeTest -Executable $setupPath -Arguments @('--smoke-test', '--silent')
     $setupFileVersion = (Get-Item -LiteralPath $setupPath).VersionInfo.FileVersion
     if ($setupFileVersion -ne $binaryVersion) {
         throw "Setup file version does not match $binaryVersion. Setup=$setupFileVersion"

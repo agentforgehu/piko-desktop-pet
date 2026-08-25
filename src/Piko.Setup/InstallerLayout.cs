@@ -8,6 +8,8 @@ internal static class InstallerLayout
 
     internal static string InstallRoot => Path.Combine(ProgramsRoot, "PikoDesktopPet");
 
+    internal static string LegacyInstallRoot => Path.Combine(ProgramsRoot, "Piko Desktop Pet");
+
     internal static string ApplicationDirectory => Path.Combine(InstallRoot, "app");
 
     internal static string InstalledSetupPath => Path.Combine(InstallRoot, "Piko.Setup.exe");
@@ -29,6 +31,9 @@ internal static class InstallerLayout
             fullDirectory + Path.DirectorySeparatorChar,
             StringComparison.OrdinalIgnoreCase);
     }
+
+    internal static bool IsManagedApplicationPath(string path) =>
+        IsInside(path, InstallRoot) || IsInside(path, LegacyInstallRoot);
 
     internal static void DeleteManagedDirectory(string path, bool allowInstallRoot = false)
     {

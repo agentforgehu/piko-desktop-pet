@@ -13,7 +13,9 @@ public sealed record PetBodyState(
     string? TargetId,
     double? TargetX,
     double ModeElapsedSeconds,
-    string Message)
+    string Message,
+    bool SpeechVisible = true,
+    PetEmotionState Emotion = default)
 {
     public static PetBodyState Create(PixelPoint feet) =>
         new(
@@ -27,5 +29,7 @@ public sealed record PetBodyState(
             null,
             null,
             0,
-            "正在寻找落脚点");
+            "正在寻找落脚点",
+            true,
+            PetEmotionState.Baseline);
 }

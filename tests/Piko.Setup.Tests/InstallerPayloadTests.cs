@@ -88,6 +88,22 @@ public sealed class InstallerPayloadTests
         }
     }
 
+    [Fact]
+    public void ManagedApplicationPathRecognizesLegacyInstallWithoutTrustingSiblings()
+    {
+        var legacyExecutable = Path.Combine(
+            InstallerLayout.LegacyInstallRoot,
+            "Piko-0.1.0-win-x64",
+            "Piko.exe");
+        var unrelatedExecutable = Path.Combine(
+            InstallerLayout.ProgramsRoot,
+            "Piko Desktop Pet Backup",
+            "Piko.exe");
+
+        Assert.True(InstallerLayout.IsManagedApplicationPath(legacyExecutable));
+        Assert.False(InstallerLayout.IsManagedApplicationPath(unrelatedExecutable));
+    }
+
     private static MemoryStream CreateZip(params (string Path, string Content)[] files)
     {
         var stream = new MemoryStream();

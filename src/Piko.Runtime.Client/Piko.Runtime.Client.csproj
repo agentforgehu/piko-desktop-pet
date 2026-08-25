@@ -3,7 +3,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <AssemblyName>Piko.Runtime.Client</AssemblyName>
     <RootNamespace>Piko.Runtime</RootNamespace>
-    <Version>0.2.1</Version>
+    <Version>0.2.2</Version>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Piko.Context\Piko.Context.csproj" />

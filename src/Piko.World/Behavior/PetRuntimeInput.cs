@@ -11,4 +11,6 @@ public sealed record PetRuntimeInput(
     PetCommand? Command = null,
     bool AutonomousBehaviorEnabled = true,
     bool PointerAwarenessEnabled = true,
-    bool WindowExplorationEnabled = true);
+    bool WindowExplorationEnabled = true,
+    PetReaction? Reaction = null,
+    PetEmotionState Emotion = default);

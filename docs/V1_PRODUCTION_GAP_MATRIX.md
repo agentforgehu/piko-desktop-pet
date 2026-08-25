@@ -10,8 +10,9 @@
 | 隐私权限闸门 | 默认拒绝敏感内容和云处理；字段级过滤及 session retention 测试 | DONE |
 | Situation Engine | 在场/离开/返回/编程/阻塞/构建/会议/影音/游戏及乱序测试 | DONE |
 | Intervention Policy | 输入抑制、失败阈值、勿扰、冷却、每小时预算和直接请求测试 | DONE |
-| Piko.Runtime 后台宿主 | 用户态独立进程、线程无关单实例门、原子心跳、桌面端自动启动、30 秒监督重启、健康检查和退出协议 | DONE |
-| 受保护本地 IPC | CurrentUserOnly 命名管道、schema v1、请求关联、大小/超时上限、Context/Agent/Memory typed endpoints 和真实生命周期测试 | DONE |
+| Piko.Runtime 后台宿主 | 用户态独立进程、线程无关单实例门、原子心跳、桌面端自动启动、1 秒健康/干预同步、监督重启和退出协议 | DONE |
+| 受保护本地 IPC | CurrentUserOnly 命名管道、health schema v2、请求关联、大小/超时上限、Context/Agent/Memory typed endpoints 和真实生命周期测试 | DONE |
+| PetMind 闭环 | Runtime 干预序列、情绪衰减、人格约束、沉默/问候/帮助/庆祝反应、桌面与 ESP32 表达投影 | DONE（0.2.2 最小闭环） |
 | Windows Context Sensors | idle/active/lock、前台应用类别、全屏、电源/电池、内存健康；仅在安全事实变化时发事件 | DONE |
 | VS Code Bridge | 诊断计数、构建/测试结果与时长、Git 计数；严格脱敏、Runtime 权限闸门、可安装 VSIX | DONE |
 | Git 感知 | 无 shell 的只读 porcelain v2 摘要，剥离路径并限制输出 | DONE |
@@ -23,20 +24,20 @@
 | 代码签名 | 需要证书或 Trusted Signing | EXTERNAL |
 | 生产美术/音频 | 当前原创矢量占位形象可运行 | EXTERNAL |
 | 性能与稳定性 | 全量自动化、真实进程 smoke、隔离长稳和 CI 资源预算；60 秒 Alpha 证据：Runtime 70.11 MB、Desktop 259.87 MB、29 次心跳全健康 | DONE（正式 RC 需 30 分钟报告） |
-| 1.0 Release | 当前公开稳定版为 0.1.0；0.2.1 作为生产能力预览版，正式 1.0 仍需完成外部门禁 | ACTIVE |
+| 1.0 Release | 当前公开稳定版为 0.1.0；0.2.2 作为最小智能闭环预览版，正式 1.0 仍需完成外部门禁 | ACTIVE |
 
 ## 当前验证基线
 
 - Release 构建：0 警告、0 错误；
-- 原桌宠测试：18/18；
+- World/PetMind 测试：22/22；
 - Context 核心测试：16/16；
 - Agent 安全核心测试：15/15；
 - Runtime/Windows/IPC 测试：27/27；
 - Memory 测试：3/3；
-- Setup 安全测试：5/5；
+- Setup 安全测试：6/6；
 - Update 安全测试：9/9；
-- 总自动化测试：93/93；
+- 总自动化测试：98/98；
 - VS Code 扩展通过严格 TypeScript 检查、编译和 VSIX 打包；
 - Desktop 与 Runtime 均有真实进程 smoke，Runtime 心跳 JSON 通过 schema/healthy 门禁；
 - 默认无云端请求；
-- 0.2.1 预览版已可安装使用；正式 1.0 尚未达到代码签名、30 分钟 RC 长稳和真实 AI 账号验收门禁。
+- 0.2.2 预览版已具备最小智能闭环并可安装使用；正式 1.0 尚未达到代码签名、30 分钟 RC 长稳和真实 AI 账号验收门禁。

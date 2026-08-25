@@ -8,7 +8,9 @@ public sealed record DevicePetState(
     int LookX,
     int LookY,
     int Brightness,
-    string Message)
+    string Message,
+    string Emotion,
+    bool ShouldSpeak)
 {
     public static DevicePetState From(long sequence, PetBodyState state) =>
         new(
@@ -19,12 +21,22 @@ public sealed record DevicePetState(
             {
                 PetMode.Resting => "sleepy",
                 PetMode.ObservingTransfer => "focused",
-                PetMode.Greeting => "happy",
+                PetMode.Greeting or PetMode.Celebrating => "happy",
+                PetMode.Concerned => "concerned",
                 PetMode.Falling => "wide",
                 _ => "normal"
             },
             state.FacingRight ? 28 : -28,
             state.Mode is PetMode.Climbing ? -18 : 0,
             80,
-            state.Message);
+            state.Message,
+            state.Mode switch
+            {
+                PetMode.Concerned => "concerned",
+                PetMode.Greeting or PetMode.Celebrating => "happy",
+                PetMode.Resting => "sleepy",
+                _ when state.Emotion.Valence < 0 => "subdued",
+                _ => "calm"
+            },
+            state.SpeechVisible);
 }

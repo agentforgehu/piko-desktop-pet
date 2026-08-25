@@ -4,7 +4,9 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
+using MediaBrushes = System.Windows.Media.Brushes;
 using Piko.Desktop.Services;
+using Piko.Context.Interventions;
 using Piko.Runtime;
 using Piko.Runtime.Security;
 using Piko.Update;
@@ -29,6 +31,7 @@ public partial class PetWindow : Window
     private readonly WindowsSnapshotProvider _snapshotProvider = new();
     private readonly DesktopWorldCompiler _worldCompiler = new();
     private readonly PetController _controller = new();
+    private readonly PetMind _mind = new();
     private readonly DispatcherTimer _worldTimer;
     private readonly DispatcherTimer _animationTimer;
     private readonly DispatcherTimer _runtimeSupervisorTimer;
@@ -52,6 +55,12 @@ public partial class PetWindow : Window
     private bool _preparedForExit;
     private long _visualFrame;
     private bool _runtimeCheckInProgress;
+    private bool _userHidden;
+    private bool _suppressedForFullscreen;
+    private bool _runtimeUnavailableLogged;
+    private DateTimeOffset? _runtimeStartedAt;
+    private long _lastInterventionSequence;
+    private PetReaction? _pendingReaction;
 
     public PetWindow(
         PikoSettings settings,
@@ -104,7 +113,11 @@ public partial class PetWindow : Window
         {
             Interval = TimeSpan.FromMilliseconds(450)
         };
-        _worldTimer.Tick += (_, _) => CaptureWorld();
+        _worldTimer.Tick += (_, _) =>
+        {
+            UpdateFullscreenSuppression();
+            CaptureWorld();
+        };
 
         _animationTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
@@ -114,7 +127,7 @@ public partial class PetWindow : Window
 
         _runtimeSupervisorTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromSeconds(30)
+            Interval = TimeSpan.FromSeconds(1)
         };
         _runtimeSupervisorTimer.Tick += async (_, _) => await CheckRuntimeAsync();
 
@@ -168,6 +181,7 @@ public partial class PetWindow : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        UpdateFullscreenSuppression();
         CaptureWorld();
         _previousTick = _clock.Elapsed;
         _worldTimer.Start();
@@ -280,8 +294,11 @@ public partial class PetWindow : Window
             _pendingCommand,
             _settings.AutonomousBehaviorEnabled,
             _settings.PointerAwarenessEnabled,
-            _settings.WindowExplorationEnabled);
+            _settings.WindowExplorationEnabled,
+            _pendingReaction,
+            _mind.Advance(elapsed));
         _pendingCommand = null;
+        _pendingReaction = null;
 
         var state = _controller.Tick(_world, input, elapsed);
         NativeWindowServices.Position(_handle, state.Feet.X, state.Feet.Y);
@@ -301,12 +318,15 @@ public partial class PetWindow : Window
     {
         _visualFrame++;
         var phase = _visualFrame * 0.12;
+        var emotion = state.Emotion == default ? PetEmotionState.Baseline : state.Emotion;
         FacingTransform.ScaleX = state.FacingRight ? 1 : -1;
         BodyMotion.Y = state.Mode switch
         {
             PetMode.Walking => Math.Abs(Math.Sin(phase)) * -4,
             PetMode.Jumping or PetMode.Falling => -3,
             PetMode.Greeting => Math.Sin(phase * 1.8) * 4,
+            PetMode.Celebrating => Math.Abs(Math.Sin(phase * 2.2)) * -9,
+            PetMode.Concerned => 3 + Math.Sin(phase * 0.35),
             _ => Math.Sin(phase * 0.35) * 1.5
         };
         ModeRotation.Angle = state.Mode switch
@@ -314,19 +334,40 @@ public partial class PetWindow : Window
             PetMode.Climbing => state.FacingRight ? -12 : 12,
             PetMode.Jumping => state.FacingRight ? 8 : -8,
             PetMode.Falling => state.FacingRight ? -6 : 6,
+            PetMode.Concerned => state.FacingRight ? 5 : -5,
+            PetMode.Celebrating => Math.Sin(phase * 1.8) * 7,
             _ => 0
         };
 
-        var blink = state.Mode == PetMode.Resting || _visualFrame % 145 is >= 0 and <= 5;
-        LeftEye.Height = blink ? 2 : state.Mode == PetMode.Falling ? 18 : 14;
+        var blinkPeriod = Math.Max(80, (int)Math.Round(165 - emotion.Arousal * 60));
+        var blink = state.Mode == PetMode.Resting || _visualFrame % blinkPeriod is >= 0 and <= 5;
+        LeftEye.Height = blink || state.Mode == PetMode.Celebrating
+            ? 2
+            : state.Mode == PetMode.Falling
+                ? 18
+                : state.Mode == PetMode.Concerned
+                    ? 9
+                    : 14;
         RightEye.Height = LeftEye.Height;
-        Canvas.SetTop(LeftEye, blink ? 57 : 49);
-        Canvas.SetTop(RightEye, blink ? 57 : 49);
+        var eyeTop = blink || state.Mode == PetMode.Celebrating
+            ? 57
+            : state.Mode == PetMode.Concerned
+                ? 53
+                : 49;
+        Canvas.SetTop(LeftEye, eyeTop);
+        Canvas.SetTop(RightEye, eyeTop);
+        BodyLayer.Opacity = 0.82 + emotion.Energy * 0.18;
+        SpeechBubble.Background = state.Mode switch
+        {
+            PetMode.Concerned => MediaBrushes.LightGoldenrodYellow,
+            PetMode.Celebrating => MediaBrushes.Honeydew,
+            _ => MediaBrushes.White
+        };
 
         var peeking = state.Mode == PetMode.Peeking;
         BodyLayer.Visibility = peeking ? Visibility.Collapsed : Visibility.Visible;
         PeekLayer.Visibility = peeking ? Visibility.Visible : Visibility.Collapsed;
-        SpeechBubble.Visibility = !peeking && _settings.ShowMessages
+        SpeechBubble.Visibility = !peeking && _settings.ShowMessages && state.SpeechVisible
             ? Visibility.Visible
             : Visibility.Collapsed;
         SpeechText.Text = state.Message;
@@ -543,7 +584,16 @@ public partial class PetWindow : Window
             var status = await _runtimeProcessManager.EnsureStartedAsync();
             if (status is null)
             {
-                _logger.Info("Piko continues in desktop-only mode because Runtime is unavailable");
+                if (!_runtimeUnavailableLogged)
+                {
+                    _logger.Info("Piko continues in desktop-only mode because Runtime is unavailable");
+                    _runtimeUnavailableLogged = true;
+                }
+            }
+            else
+            {
+                _runtimeUnavailableLogged = false;
+                ProcessRuntimeStatus(status);
             }
         }
         catch (Exception exception)
@@ -662,14 +712,17 @@ public partial class PetWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            if (IsVisible)
+            if (_suppressedForFullscreen)
             {
-                Hide();
+                _userHidden = false;
+                return;
             }
-            else
+
+            _userHidden = IsVisible;
+            ApplyVisibilityState();
+            if (!_userHidden)
             {
-                Show();
-                QueueCommand(PetCommand.Recall);
+                _pendingCommand = PetCommand.Recall;
             }
         });
     }
@@ -678,13 +731,78 @@ public partial class PetWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            if (!IsVisible)
-            {
-                Show();
-            }
-
+            _userHidden = false;
+            ApplyVisibilityState();
             _pendingCommand = command;
         });
+    }
+
+    private void UpdateFullscreenSuppression()
+    {
+        if (_smokeTest || _handle == 0)
+        {
+            return;
+        }
+
+        var shouldSuppress = NativeWindowServices.IsForegroundWindowFullscreen(_handle);
+        if (shouldSuppress == _suppressedForFullscreen)
+        {
+            return;
+        }
+
+        _suppressedForFullscreen = shouldSuppress;
+        ApplyVisibilityState();
+        _logger.Info(shouldSuppress
+            ? "Piko hidden while a fullscreen application is active"
+            : "Piko restored after fullscreen application ended");
+    }
+
+    private void ApplyVisibilityState()
+    {
+        var shouldShow = !_userHidden && !_suppressedForFullscreen;
+        if (shouldShow && !IsVisible)
+        {
+            Show();
+        }
+        else if (!shouldShow && IsVisible)
+        {
+            Hide();
+        }
+    }
+
+    private void ProcessRuntimeStatus(RuntimeStatusSnapshot status)
+    {
+        if (_runtimeStartedAt != status.StartedAt)
+        {
+            _runtimeStartedAt = status.StartedAt;
+            _lastInterventionSequence = 0;
+        }
+
+        if (status.InterventionSequence <= _lastInterventionSequence)
+        {
+            return;
+        }
+
+        _lastInterventionSequence = status.InterventionSequence;
+        var stimulus = status.LastIntervention switch
+        {
+            InterventionKind.SilentConcern => PetStimulus.SilentConcern,
+            InterventionKind.Greet => PetStimulus.Greet,
+            InterventionKind.OfferHelp => PetStimulus.OfferHelp,
+            InterventionKind.Celebrate => PetStimulus.Celebrate,
+            InterventionKind.RespondToUser => PetStimulus.RespondToUser,
+            _ => (PetStimulus?)null
+        };
+        if (stimulus is null)
+        {
+            return;
+        }
+
+        _pendingReaction = _mind.React(stimulus.Value, status.InterventionShouldSpeak);
+        _logger.Info(
+            $"PetMind accepted {status.InterventionSemanticAction} " +
+            $"(emotion={_mind.Emotion.Valence:F2}/{_mind.Emotion.Arousal:F2}, " +
+            $"speak={_pendingReaction.ShouldSpeak})");
     }
 
     private void SaveSettings(bool cleanExit)
@@ -723,6 +841,8 @@ public partial class PetWindow : Window
         PetMode.ObservingTransfer => "观察文件活动",
         PetMode.Resting => "休息",
         PetMode.Greeting => "打招呼",
+        PetMode.Concerned => "安静关心",
+        PetMode.Celebrating => "庆祝",
         _ => mode.ToString()
     };
 }
