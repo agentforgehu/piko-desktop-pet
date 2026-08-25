@@ -1,5 +1,6 @@
 using System.Windows;
 using Piko.Desktop.Services;
+using Piko.Runtime;
 
 namespace Piko.Desktop;
 
@@ -22,16 +23,29 @@ public partial class SettingsWindow : Window
         GitCheck.IsChecked = settings.GitAwarenessEnabled;
         AgentReadCheck.IsChecked = settings.AgentReadEnabled;
         MemoryCheck.IsChecked = settings.MemoryEnabled;
-        CloudAiCheck.IsChecked = settings.CloudAiEnabled;
+        ForegroundActivityCheck.IsChecked = settings.ForegroundActivityAwarenessEnabled;
+        ProviderCombo.SelectedIndex = (int)settings.ProviderMode;
         AiEndpointText.Text = settings.AiEndpoint;
         AiModelText.Text = settings.AiModel;
+        LocalAiEndpointText.Text = settings.LocalAiEndpoint;
+        LocalAiModelText.Text = settings.LocalAiModel;
+        AddressModeCombo.SelectedIndex = (int)settings.UserAddressMode;
+        UserNameText.Text = settings.UserName;
+        CustomAddressText.Text = settings.CustomAddress;
+        PersonalityText.Text = settings.Personality;
+        ProactivityCombo.SelectedIndex = (int)settings.Proactivity;
     }
 
     public PikoSettings? Result { get; private set; }
     public string? ApiKeyUpdate { get; private set; }
     public bool ClearApiKey { get; private set; }
+    public bool TestConnectionRequested { get; private set; }
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private void Save_Click(object sender, RoutedEventArgs e) => TryFinish(testConnection: false);
+
+    private void SaveAndTest_Click(object sender, RoutedEventArgs e) => TryFinish(testConnection: true);
+
+    private void TryFinish(bool testConnection)
     {
         var candidate = _original with
         {
@@ -46,9 +60,18 @@ public partial class SettingsWindow : Window
             GitAwarenessEnabled = GitCheck.IsChecked == true,
             AgentReadEnabled = AgentReadCheck.IsChecked == true,
             MemoryEnabled = MemoryCheck.IsChecked == true,
-            CloudAiEnabled = CloudAiCheck.IsChecked == true,
+            CloudAiEnabled = ProviderCombo.SelectedIndex == (int)AiProviderMode.OpenAiApi,
+            ProviderMode = (AiProviderMode)Math.Max(0, ProviderCombo.SelectedIndex),
             AiEndpoint = AiEndpointText.Text.Trim(),
-            AiModel = AiModelText.Text.Trim()
+            AiModel = AiModelText.Text.Trim(),
+            LocalAiEndpoint = LocalAiEndpointText.Text.Trim(),
+            LocalAiModel = LocalAiModelText.Text.Trim(),
+            UserAddressMode = (UserAddressMode)Math.Max(0, AddressModeCombo.SelectedIndex),
+            UserName = UserNameText.Text.Trim(),
+            CustomAddress = CustomAddressText.Text.Trim(),
+            Personality = PersonalityText.Text.Trim(),
+            Proactivity = (PetProactivity)Math.Max(0, ProactivityCombo.SelectedIndex),
+            ForegroundActivityAwarenessEnabled = ForegroundActivityCheck.IsChecked == true
         };
         try
         {
@@ -69,6 +92,7 @@ public partial class SettingsWindow : Window
             ? null
             : AiApiKeyPassword.Password;
         ClearApiKey = ClearAiKeyCheck.IsChecked == true;
+        TestConnectionRequested = testConnection;
         DialogResult = true;
     }
 
@@ -77,3 +101,4 @@ public partial class SettingsWindow : Window
         DialogResult = false;
     }
 }
+

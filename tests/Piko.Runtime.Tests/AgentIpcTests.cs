@@ -13,7 +13,7 @@ public sealed class AgentIpcTests
             new ThrowingProvider());
 
         Assert.False(result.Available);
-        Assert.Equal("cloud_ai_disabled", result.Reason);
+        Assert.Equal("model_disabled", result.Reason);
         Assert.Equal("disabled", result.Provider);
     }
 
@@ -21,7 +21,7 @@ public sealed class AgentIpcTests
     public async Task EnabledAgentReturnsValidatedProposalWithoutExecutingIt()
     {
         var provider = new StaticProvider(
-            "{\"message\":\"I can inspect Git.\",\"toolCalls\":[{\"toolName\":\"git.status\",\"rationale\":\"Read counts only\",\"arguments\":[]}]}");
+            "{\"message\":\"I can inspect Git.\",\"emotion\":\"neutral\",\"action\":\"listen\",\"toolCalls\":[{\"toolName\":\"git.status\",\"rationale\":\"Read counts only\",\"arguments\":[]}]}");
         var result = await RunPlanAsync(
             new RuntimeUserSettings
             {
@@ -53,7 +53,7 @@ public sealed class AgentIpcTests
                 AgentReadEnabled = true
             });
         var provider = new StaticProvider(
-            "{\"message\":\"I can inspect Git.\",\"toolCalls\":[{\"toolName\":\"git.status\",\"rationale\":\"Read counts only\",\"arguments\":[]}]}");
+            "{\"message\":\"I can inspect Git.\",\"emotion\":\"neutral\",\"action\":\"listen\",\"toolCalls\":[{\"toolName\":\"git.status\",\"rationale\":\"Read counts only\",\"arguments\":[]}]}");
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var host = new PikoRuntimeHost(
             new RuntimePaths(root),
@@ -139,3 +139,4 @@ public sealed class AgentIpcTests
             throw new InvalidOperationException("Provider must not be called while cloud AI is disabled.");
     }
 }
+

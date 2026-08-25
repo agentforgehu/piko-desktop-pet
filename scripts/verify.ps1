@@ -20,6 +20,8 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 
 Push-Location $projectRoot
 try {
+    & (Join-Path $PSScriptRoot 'check-version-sync.ps1')
+
     & $dotnet restore 'Piko.sln'
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -64,7 +66,7 @@ try {
     }
 
     $runtimeStatus = Get-Content -LiteralPath $runtimeStatusFile -Raw | ConvertFrom-Json
-    if ($runtimeStatus.schemaVersion -ne 1 -or $runtimeStatus.health -ne 'healthy') {
+    if ($runtimeStatus.schemaVersion -ne 2 -or $runtimeStatus.health -ne 'healthy') {
         throw 'Runtime smoke status is not healthy or has an unsupported schema.'
     }
 
@@ -72,3 +74,4 @@ try {
 } finally {
     Pop-Location
 }
+

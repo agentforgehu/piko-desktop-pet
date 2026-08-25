@@ -2,7 +2,9 @@
 
 ## 发布物
 
-`scripts/publish.ps1 -Version <semver>` 生成：
+产品版本由 `release-version.txt` 单点定义。`scripts/check-version-sync.ps1` 会检查 README、CHANGELOG、用户指南、生产差距矩阵、安装器版本源和 VS Code 扩展；不同步时 `verify.ps1` 与 `publish.ps1` 都会失败。
+
+`scripts/publish.ps1` 生成：
 
 - `Piko-<version>-Setup.exe`：当前用户单文件安装器；
 - `Piko-<version>-win-x64.zip`：免安装便携包；
@@ -43,3 +45,4 @@ Setup 安装到 `%LOCALAPPDATA%\Programs\PikoDesktopPet`。新 payload 先解压
 - 确认最终默认模型和允许使用的国家/地区/合规策略；
 - 最终角色美术、图标和音频授权材料（当前原创矢量占位可继续使用）；
 - 正式 RC 至少 30 分钟本机长稳报告，推荐另做 8 小时夜间 soak。
+

@@ -14,12 +14,14 @@ public sealed class AgentPlannerTests
         var registry = new AgentToolRegistry();
         registry.Register(tool);
         var provider = new StaticProvider(
-            "{\"message\":\"I can check that.\",\"toolCalls\":[{\"toolName\":\"git.status\",\"rationale\":\"Inspect summary\",\"arguments\":[]}]}" );
+            "{\"message\":\"I can check that.\",\"emotion\":\"concerned\",\"action\":\"concern\",\"toolCalls\":[{\"toolName\":\"git.status\",\"rationale\":\"Inspect summary\",\"arguments\":[]}]}" );
         var planner = new AgentPlanner(provider, registry);
 
         var result = await planner.PlanAsync("situation:CodingBlocked", "What failed?");
 
         Assert.True(result.Available);
+        Assert.Equal("concerned", result.Emotion);
+        Assert.Equal("concern", result.Action);
         Assert.Single(result.ToolCalls);
         Assert.Equal("git.status", result.ToolCalls[0].ToolName);
         Assert.Equal(0, tool.ExecutionCount);
@@ -31,7 +33,7 @@ public sealed class AgentPlannerTests
         var registry = new AgentToolRegistry();
         registry.Register(new CountingTool());
         var provider = new StaticProvider(
-            "{\"message\":\"Trying.\",\"toolCalls\":[{\"toolName\":\"shell.unrestricted\",\"rationale\":\"No\",\"arguments\":[]}]}" );
+            "{\"message\":\"Trying.\",\"emotion\":\"neutral\",\"action\":\"listen\",\"toolCalls\":[{\"toolName\":\"shell.unrestricted\",\"rationale\":\"No\",\"arguments\":[]}]}" );
         var planner = new AgentPlanner(provider, registry);
 
         var result = await planner.PlanAsync("safe", "Do it");
@@ -67,3 +69,4 @@ public sealed class AgentPlannerTests
         }
     }
 }
+

@@ -2,7 +2,7 @@
   "name": "piko-context-bridge",
   "displayName": "Piko Context Bridge",
   "description": "Sends privacy-safe development summaries to the local Piko Runtime.",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "publisher": "piko-desktop-pet",
   "license": "MIT",
   "repository": {
@@ -50,3 +50,4 @@
     "typescript": "^5.7.2"
   }
 }
+

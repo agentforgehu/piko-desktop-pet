@@ -7,6 +7,20 @@ namespace Piko.World.Tests;
 
 public sealed class PetControllerTests
 {
+    [Fact]
+    public void PetMind_ModelExpressionIsAllowlistedBoundedAndChangesEmotion()
+    {
+        var mind = new PetMind();
+
+        var reaction = mind.ReactToModel(new string('好', 800), "excited", "celebrate");
+
+        Assert.Equal(PetCommand.Celebrate, reaction.Command);
+        Assert.Equal(500, reaction.Message.Length);
+        Assert.True(reaction.ShouldSpeak);
+        Assert.True(reaction.Emotion.Valence > PetEmotionState.Baseline.Valence);
+        Assert.True(reaction.Emotion.Arousal > PetEmotionState.Baseline.Arousal);
+    }
+
     private readonly DesktopWorldCompiler _compiler = new();
 
     [Fact]
@@ -324,3 +338,4 @@ public sealed class PetControllerTests
         }
     }
 }
+

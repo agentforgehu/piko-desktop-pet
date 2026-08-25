@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.2.2',
+    [string]$Version = '',
     [int]$DurationSeconds = 1800,
     [int]$SampleSeconds = 2,
     [int]$MaximumDesktopWorkingSetMb = 350,
@@ -21,6 +21,11 @@ if ($SampleSeconds -lt 1 -or $SampleSeconds -gt 30) {
 }
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$Version = if ([string]::IsNullOrWhiteSpace($Version)) {
+    (Get-Content -LiteralPath (Join-Path $projectRoot 'release-version.txt') -Raw).Trim()
+} else {
+    $Version
+}
 $workspaceRoot = (Resolve-Path (Join-Path $projectRoot '..\..')).Path
 $publishDirectory = Join-Path $projectRoot "releases\Piko-$Version-win-x64"
 $desktopExecutable = Join-Path $publishDirectory 'Piko.exe'
@@ -171,7 +176,10 @@ try {
         summary = $summary
         samples = $samples
     }
-    $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding utf8NoBOM
+    [IO.File]::WriteAllText(
+        $reportPath,
+        ($report | ConvertTo-Json -Depth 6),
+        [Text.UTF8Encoding]::new($false))
     $reportHash = (Get-FileHash -LiteralPath $reportPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -LiteralPath $reportChecksumPath -Value "$reportHash  $(Split-Path -Leaf $reportPath)" -Encoding ascii
     if (-not $passed) {
@@ -203,3 +211,4 @@ try {
         Remove-Item -LiteralPath $testRoot -Recurse -Force
     }
 }
+

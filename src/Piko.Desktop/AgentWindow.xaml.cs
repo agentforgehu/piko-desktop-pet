@@ -10,14 +10,20 @@ public partial class AgentWindow : Window
 {
     private readonly RuntimeProcessManager _runtime;
     private readonly AppLogger _logger;
+    private readonly Action<RuntimeAgentPlanResponse>? _onPetResponse;
     private bool _sending;
     private RuntimeAgentPlanResponse? _lastPlan;
+    private readonly List<(string User, string Piko)> _conversation = new();
 
-    public AgentWindow(RuntimeProcessManager runtime, AppLogger logger)
+    public AgentWindow(
+        RuntimeProcessManager runtime,
+        AppLogger logger,
+        Action<RuntimeAgentPlanResponse>? onPetResponse = null)
     {
         InitializeComponent();
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _onPetResponse = onPetResponse;
         TranscriptText.Text = "Piko：我会结合当前情境回答。若 AI 未启用，请先在设置中配置。\n";
         Loaded += (_, _) => QuestionText.Focus();
     }
@@ -48,8 +54,18 @@ public partial class AgentWindow : Window
         QuestionText.Clear();
         try
         {
-            var result = await _runtime.PlanAgentAsync(question);
+            var modelRequest = BuildConversationRequest(question);
+            var result = await _runtime.PlanAgentAsync(modelRequest);
             _lastPlan = result;
+            if (result.Available)
+            {
+                _conversation.Add((question, result.Message));
+                if (_conversation.Count > 6)
+                {
+                    _conversation.RemoveAt(0);
+                }
+                _onPetResponse?.Invoke(result);
+            }
             ExecuteButton.IsEnabled = result.ToolProposals.Any(proposal =>
                 proposal.PermissionEnabled && proposal.Risk == "ReadOnly");
             Append(Format(result));
@@ -118,10 +134,11 @@ public partial class AgentWindow : Window
         {
             var reason = result.Reason switch
             {
-                "cloud_ai_disabled" => "云端 AI 尚未启用。",
+                "model_disabled" or "cloud_ai_disabled" => "模型尚未启用。",
                 "api_key_unavailable" => "Windows 凭据管理器中没有可用的 API Key。",
                 "credential_unavailable" => "无法读取 Windows 凭据管理器。",
                 "timeout" => "AI 请求超时。",
+                "provider_error" => "本地模型接口没有返回有效结果。",
                 _ => $"AI 当前不可用（{result.Reason}）。"
             };
             return $"Piko：{reason}\n";
@@ -146,9 +163,27 @@ public partial class AgentWindow : Window
         return text.ToString();
     }
 
+    private string BuildConversationRequest(string question)
+    {
+        if (_conversation.Count == 0)
+        {
+            return question;
+        }
+
+        var text = new StringBuilder("Recent conversation in this local window:\n");
+        foreach (var turn in _conversation.TakeLast(6))
+        {
+            text.Append("User: ").AppendLine(turn.User);
+            text.Append("Piko: ").AppendLine(turn.Piko);
+        }
+        text.Append("User: ").Append(question);
+        return text.Length <= 8192 ? text.ToString() : text.ToString()[^8192..];
+    }
+
     private void Append(string text)
     {
         TranscriptText.AppendText($"{text}\n");
         TranscriptText.ScrollToEnd();
     }
 }
+

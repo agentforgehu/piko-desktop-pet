@@ -25,6 +25,7 @@ VS Code Extension ── authenticated local IPC ── Piko.Runtime
 
 - 只负责表现和直接交互；
 - 展示当前 Situation、感知状态和行为原因；
+- 展示模型提供方、关闭/未测试/健康/异常状态，并提供保存后真实连接测试；
 - 提供分项权限、暂停感知、记忆查看/删除和 Agent 审批；
 - Runtime 暂时不可用时仍能显示安全降级角色并提供恢复入口。
 
@@ -42,6 +43,8 @@ VS Code Extension ── authenticated local IPC ── Piko.Runtime
 ### Piko.Agent（Runtime 内的受控组件）
 
 - `IAiProvider` 屏蔽具体模型供应商；
+- OpenAI API 使用 Responses 结构化输出，本地模型使用仅限回环地址的 OpenAI-compatible Chat Completions；
+- Runtime 记录最近模型健康、错误类别和检查时间，但不记录 API Key、提示词或模型回复正文；
 - Context Composer 只消费隐私过滤后的 Situation 和显式选择的证据；
 - Tool Registry 记录每个工具的权限等级、参数 schema 和副作用；
 - 1.0 默认只注册只读工具；写文件、运行命令、Git 远端或外部通信工具不进入生产注册表；
@@ -99,3 +102,4 @@ AI 只在以下条件之一成立时参与：
 - 代码签名：Release Candidate 前可使用未签名内部包，正式 1.0 需要可信签名方案；
 - 美术和音频：表现层可替换，不阻塞后台研发；
 - ESP32：1.0 保持协议和模拟器，硬件验收需要具体板型和屏幕资料。
+

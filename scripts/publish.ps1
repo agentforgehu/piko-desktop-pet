@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.2.2',
+    [string]$Version = '',
     [ValidateSet('auto', 'preview', 'stable')]
     [string]$Channel = 'auto',
     [string]$SignToolPath = '',
@@ -9,16 +9,19 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-
-if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
-    throw "Invalid semantic version: $Version"
-}
-
-$version = $Version
-$versionCore = ($version -split '-', 2)[0]
-$versionParts = $versionCore.Split('.')
-$binaryVersion = '{0}.{1}.{2}.0' -f $versionParts[0], $versionParts[1], $versionParts[2]
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$version = if ([string]::IsNullOrWhiteSpace($Version)) {
+    (Get-Content -LiteralPath (Join-Path $projectRoot 'release-version.txt') -Raw).Trim()
+} else {
+    $Version
+}
+if ($version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Invalid Piko release version: $version"
+}
+& (Join-Path $PSScriptRoot 'check-version-sync.ps1') -ExpectedVersion $version
+$versionCore = $version
+$versionParts = $versionCore.Split('.')
+$binaryVersion = "$versionCore.0"
 $workspaceRoot = (Resolve-Path (Join-Path $projectRoot '..\..')).Path
 $releaseRoot = Join-Path $projectRoot 'releases'
 $publishDirectory = Join-Path $releaseRoot "Piko-$version-win-x64"
@@ -321,7 +324,10 @@ try {
             authenticodeRequired = $shouldSign
         }
     }
-    $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $updateManifestPath -Encoding utf8NoBOM
+    [IO.File]::WriteAllText(
+        $updateManifestPath,
+        ($manifest | ConvertTo-Json -Depth 4),
+        [Text.UTF8Encoding]::new($false))
     $manifestHash = (Get-FileHash -LiteralPath $updateManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Set-Content -LiteralPath $updateManifestChecksumPath -Value "$manifestHash  $(Split-Path -Leaf $updateManifestPath)" -Encoding ascii
 
@@ -340,3 +346,4 @@ try {
         Remove-Item -LiteralPath $setupPublishDirectory -Recurse -Force
     }
 }
+

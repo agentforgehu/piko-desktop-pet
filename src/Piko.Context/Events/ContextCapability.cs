@@ -16,8 +16,12 @@ public enum ContextCapability
     TerminalOutput,
     GitMetadata,
     ScreenCapture,
+    BrowserContent,
+    FullCodeContent,
+    KeyboardContent,
     Microphone,
     CloudAiProcessing,
     AgentRead,
     AgentWrite
 }
+

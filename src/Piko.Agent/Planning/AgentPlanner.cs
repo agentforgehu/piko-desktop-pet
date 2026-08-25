@@ -13,12 +13,18 @@ public sealed record AgentPlanResult(
     bool Available,
     string Reason,
     string Message,
+    string Emotion,
+    string Action,
     IReadOnlyList<AgentPlannedToolCall> ToolCalls,
     string Provider,
     string Model);
 
 public sealed class AgentPlanner
 {
+    private static readonly HashSet<string> AllowedEmotions = new(StringComparer.Ordinal)
+        { "neutral", "happy", "concerned", "excited", "calm" };
+    private static readonly HashSet<string> AllowedActions = new(StringComparer.Ordinal)
+        { "listen", "greet", "concern", "celebrate", "rest" };
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly IAiProvider _provider;
     private readonly AgentToolRegistry _registry;
@@ -32,6 +38,7 @@ public sealed class AgentPlanner
     public async ValueTask<AgentPlanResult> PlanAsync(
         string sanitizedContext,
         string userRequest,
+        AgentConversationProfile? conversationProfile = null,
         CancellationToken cancellationToken = default)
     {
         if (sanitizedContext.Length > 32_768 ||
@@ -41,9 +48,13 @@ public sealed class AgentPlanner
         }
 
         var tools = _registry.Descriptors.Select(CreatePromptDescriptor).ToArray();
-        var instruction = "You are the planning layer for Piko Desktop Pet. " +
+        var profile = conversationProfile ?? AgentConversationProfile.Default;
+        var instruction = "You are the planning and expression layer for Piko Desktop Pet. " +
             "Return only the required structured plan. You may propose tools, but you never execute them. " +
             "The local policy engine independently checks every proposal and requires approval for writes. " +
+            $"Address the user as '{profile.UserAddress}'. Personality: {profile.Personality}. " +
+            $"Proactivity: {profile.Proactivity}. Keep the visible message concise. " +
+            "Choose one allowlisted emotion and one allowlisted body action. " +
             $"Available tools: {JsonSerializer.Serialize(tools, JsonOptions)}";
         var response = await _provider.CompleteAsync(
             new AiModelRequest(instruction, sanitizedContext, userRequest),
@@ -54,6 +65,8 @@ public sealed class AgentPlanner
                 false,
                 response.Error ?? "provider_unavailable",
                 string.Empty,
+                "neutral",
+                "listen",
                 Array.Empty<AgentPlannedToolCall>(),
                 response.Provider,
                 response.Model);
@@ -62,7 +75,9 @@ public sealed class AgentPlanner
         try
         {
             var wire = JsonSerializer.Deserialize<AgentPlanWire>(response.Text, JsonOptions);
-            if (wire?.Message is null || wire.Message.Length > 8192 ||
+            if (wire?.Message is null || wire.Message.Length > 500 ||
+                wire.Emotion is null || !AllowedEmotions.Contains(wire.Emotion) ||
+                wire.Action is null || !AllowedActions.Contains(wire.Action) ||
                 wire.ToolCalls is null || wire.ToolCalls.Count > 5)
             {
                 return Invalid(response, "invalid_plan_shape");
@@ -95,6 +110,8 @@ public sealed class AgentPlanner
                 true,
                 "planned",
                 wire.Message,
+                wire.Emotion,
+                wire.Action,
                 calls,
                 response.Provider,
                 response.Model);
@@ -109,6 +126,8 @@ public sealed class AgentPlanner
         false,
         reason,
         string.Empty,
+        "neutral",
+        "listen",
         Array.Empty<AgentPlannedToolCall>(),
         response.Provider,
         response.Model);
@@ -129,10 +148,20 @@ public sealed class AgentPlanner
         string Risk,
         JsonElement InputSchema);
 
-    private sealed record AgentPlanWire(string? Message, IReadOnlyList<AgentToolCallWire>? ToolCalls);
+    private sealed record AgentPlanWire(
+        string? Message,
+        string? Emotion,
+        string? Action,
+        IReadOnlyList<AgentToolCallWire>? ToolCalls);
     private sealed record AgentToolCallWire(
         string? ToolName,
         string? Rationale,
         IReadOnlyList<AgentPlannedArgumentWire>? Arguments);
     private sealed record AgentPlannedArgumentWire(string? Name, string? Value);
 }
+
+public sealed record AgentConversationProfile(string UserAddress, string Personality, string Proactivity)
+{
+    public static AgentConversationProfile Default { get; } = new("主人", "温暖、简短、稍微活泼", "low");
+}
+

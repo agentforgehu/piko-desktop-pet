@@ -20,6 +20,8 @@ public sealed record RuntimeAgentPlanResponse(
     bool Available,
     string Reason,
     string Message,
+    string Emotion,
+    string Action,
     IReadOnlyList<RuntimeAgentToolProposal> ToolProposals,
     string Provider,
     string Model);
@@ -37,3 +39,4 @@ public sealed record RuntimeAgentExecutionResponse(
     string Summary,
     string Output,
     bool WasTruncated);
+

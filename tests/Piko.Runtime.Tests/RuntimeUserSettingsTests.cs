@@ -37,6 +37,35 @@ public sealed class RuntimeUserSettingsTests
     }
 
     [Fact]
+    public void AwarenessTogglesCanDenyForegroundAndFileActivity()
+    {
+        var profile = new RuntimeUserSettings
+        {
+            ForegroundActivityAwarenessEnabled = false,
+            FileActivityAwarenessEnabled = false
+        }.ToPrivacyProfile();
+
+        Assert.Equal(PermissionGrant.Denied, profile.GrantFor(ContextCapability.ForegroundApplicationCategory));
+        Assert.Equal(PermissionGrant.Denied, profile.GrantFor(ContextCapability.FileActivity));
+        Assert.Equal(PermissionGrant.Denied, profile.GrantFor(ContextCapability.ScreenCapture));
+        Assert.Equal(PermissionGrant.Denied, profile.GrantFor(ContextCapability.BrowserContent));
+        Assert.Equal(PermissionGrant.Denied, profile.GrantFor(ContextCapability.FullCodeContent));
+        Assert.Equal(PermissionGrant.Denied, profile.GrantFor(ContextCapability.KeyboardContent));
+    }
+
+    [Fact]
+    public void LocalProviderMustStayOnLoopback()
+    {
+        var settings = new RuntimeUserSettings
+        {
+            ProviderMode = AiProviderMode.LocalCompatible,
+            LocalAiEndpoint = "https://example.com/v1/"
+        };
+
+        Assert.Throws<ArgumentException>(() => settings.Validate());
+    }
+
+    [Fact]
     public void SettingsFileRoundTripsAtomically()
     {
         var root = Path.Combine(Path.GetTempPath(), "PikoRuntimeSettingsTests", Guid.NewGuid().ToString("N"));
@@ -63,3 +92,4 @@ public sealed class RuntimeUserSettingsTests
         }
     }
 }
+

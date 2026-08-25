@@ -1,8 +1,11 @@
 <Project>
   <PropertyGroup>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Deterministic>true</Deterministic>
+    <Nullable>enable</Nullable>
+    <PikoVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)release-version.txt').Trim())</PikoVersion>
+    <Version>$(PikoVersion)</Version>
+    <AssemblyVersion>$(PikoVersion).0</AssemblyVersion>
+    <FileVersion>$(PikoVersion).0</FileVersion>
   </PropertyGroup>
 </Project>
+

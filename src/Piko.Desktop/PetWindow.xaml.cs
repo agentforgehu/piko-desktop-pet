@@ -8,6 +8,7 @@ using MediaBrushes = System.Windows.Media.Brushes;
 using Piko.Desktop.Services;
 using Piko.Context.Interventions;
 using Piko.Runtime;
+using Piko.Runtime.Ipc;
 using Piko.Runtime.Security;
 using Piko.Update;
 using Piko.World.Behavior;
@@ -38,6 +39,8 @@ public partial class PetWindow : Window
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Forms.NotifyIcon _trayIcon;
     private readonly Forms.ContextMenuStrip _trayMenu;
+    private readonly System.Drawing.Icon _trayIconImage;
+    private Forms.ToolStripMenuItem? _modelStatusMenuItem;
     private readonly bool _recoveredFromCrash;
     private readonly bool _smokeTest;
     private readonly TimeSpan? _automaticShutdownAfter;
@@ -61,6 +64,8 @@ public partial class PetWindow : Window
     private DateTimeOffset? _runtimeStartedAt;
     private long _lastInterventionSequence;
     private PetReaction? _pendingReaction;
+    private AgentWindow? _agentWindow;
+    private int _clickSequence;
 
     public PetWindow(
         PikoSettings settings,
@@ -88,9 +93,10 @@ public partial class PetWindow : Window
         _updateService = new UpdateService(paths.Root, logger);
 
         _trayMenu = BuildTrayMenu();
+        _trayIconImage = PikoTrayIconFactory.Create();
         _trayIcon = new Forms.NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = _trayIconImage,
             Text = "Piko Desktop Pet",
             Visible = true,
             ContextMenuStrip = _trayMenu
@@ -155,6 +161,7 @@ public partial class PetWindow : Window
 
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
+        _trayIconImage.Dispose();
         _trayMenu.Dispose();
         _logger.Info("Piko exited cleanly");
     }
@@ -387,6 +394,7 @@ public partial class PetWindow : Window
 
         if (e.ClickCount >= 2)
         {
+            _clickSequence++;
             OpenSettings();
             e.Handled = true;
             return;
@@ -427,10 +435,20 @@ public partial class PetWindow : Window
 
         if (!wasDragging)
         {
-            QueueCommand(PetCommand.Greet);
+            var clickSequence = ++_clickSequence;
+            _ = OpenAgentAfterSingleClickAsync(clickSequence);
         }
 
         e.Handled = true;
+    }
+
+    private async Task OpenAgentAfterSingleClickAsync(int clickSequence)
+    {
+        await Task.Delay(Forms.SystemInformation.DoubleClickTime);
+        if (clickSequence == _clickSequence)
+        {
+            OpenAgent();
+        }
     }
 
     private void Window_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
@@ -445,6 +463,12 @@ public partial class PetWindow : Window
     private Forms.ContextMenuStrip BuildTrayMenu()
     {
         var menu = new Forms.ContextMenuStrip();
+        _modelStatusMenuItem = new Forms.ToolStripMenuItem("模型：等待后台状态")
+        {
+            Enabled = false
+        };
+        menu.Items.Add(_modelStatusMenuItem);
+        menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("召回 Piko  (Ctrl+Alt+P)", null, (_, _) => QueueCommand(PetCommand.Recall));
         menu.Items.Add("显示 / 隐藏", null, (_, _) => ToggleVisibility());
 
@@ -471,10 +495,30 @@ public partial class PetWindow : Window
 
     private void OpenAgent()
     {
-        var window = new AgentWindow(_runtimeProcessManager, _logger)
+        if (_agentWindow is { IsLoaded: true })
+        {
+            _agentWindow.Activate();
+            return;
+        }
+
+        _pendingReaction = _mind.React(PetStimulus.RespondToUser, _settings.ShowMessages);
+        var window = new AgentWindow(_runtimeProcessManager, _logger, result =>
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _pendingReaction = _mind.ReactToModel(
+                    result.Message,
+                    result.Emotion,
+                    result.Action,
+                    _settings.ShowMessages);
+                _logger.Info($"Model expression accepted (emotion={result.Emotion}, action={result.Action})");
+            });
+        })
         {
             Owner = this
         };
+        _agentWindow = window;
+        window.Closed += (_, _) => _agentWindow = null;
         window.Show();
     }
 
@@ -501,7 +545,7 @@ public partial class PetWindow : Window
         }
 
         System.Windows.MessageBox.Show(
-            $"状态：{status.Health}\n版本：{status.Version}\n情境：{status.Situation}\n心跳：{status.LastHeartbeatAt.ToLocalTime():HH:mm:ss}",
+            $"状态：{status.Health}\n版本：{status.Version}\n模型：{DescribeModelStatus(status)}\n情境：{status.Situation}\n心跳：{status.LastHeartbeatAt.ToLocalTime():HH:mm:ss}",
             "Piko 后台",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
@@ -606,7 +650,7 @@ public partial class PetWindow : Window
         }
     }
 
-    private void OpenSettings()
+    private async void OpenSettings()
     {
         var dialog = new SettingsWindow(_settings);
         if (dialog.ShowDialog() == true && dialog.Result is { } result)
@@ -637,7 +681,11 @@ public partial class PetWindow : Window
             RuntimeUserSettingsFile.Save(
                 _paths.RuntimeSettingsFile,
                 _settings.ToRuntimeUserSettings());
-            _ = RestartRuntimeAfterSettingsChangeAsync();
+            await RestartRuntimeAfterSettingsChangeAsync();
+            if (dialog.TestConnectionRequested)
+            {
+                await TestModelConnectionAsync();
+            }
             try
             {
                 StartupRegistration.Apply(_settings.LaunchAtStartup);
@@ -727,6 +775,49 @@ public partial class PetWindow : Window
         });
     }
 
+    private async Task TestModelConnectionAsync()
+    {
+        if (_settings.ProviderMode == AiProviderMode.Disabled)
+        {
+            System.Windows.MessageBox.Show(
+                "模型接入仍处于关闭状态。请先选择 OpenAI API 或本地兼容模型。",
+                "Piko 模型连接测试",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        RuntimeAgentPlanResponse result;
+        try
+        {
+            result = await _runtimeProcessManager.PlanAgentAsync(
+                "This is a connection test. Reply with a very short greeting, neutral emotion, listen action, and no tools.");
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("Model connection test failed", exception);
+            System.Windows.MessageBox.Show(
+                "无法连接 Piko Runtime。请稍后重试或查看后台状态。",
+                "Piko 模型连接测试",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var latestStatus = await _runtimeProcessManager.TryGetStatusAsync();
+        if (latestStatus is not null)
+        {
+            UpdateModelStatus(latestStatus);
+        }
+        System.Windows.MessageBox.Show(
+            result.Available
+                ? $"连接成功。\n提供方：{result.Provider}\n模型：{result.Model}\nPiko：{result.Message}"
+                : DescribeModelError(result.Reason),
+            "Piko 模型连接测试",
+            MessageBoxButton.OK,
+            result.Available ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
+
     private void QueueCommand(PetCommand command)
     {
         Dispatcher.Invoke(() =>
@@ -778,6 +869,8 @@ public partial class PetWindow : Window
             _lastInterventionSequence = 0;
         }
 
+        UpdateModelStatus(status);
+
         if (status.InterventionSequence <= _lastInterventionSequence)
         {
             return;
@@ -803,6 +896,81 @@ public partial class PetWindow : Window
             $"PetMind accepted {status.InterventionSemanticAction} " +
             $"(emotion={_mind.Emotion.Valence:F2}/{_mind.Emotion.Arousal:F2}, " +
             $"speak={_pendingReaction.ShouldSpeak})");
+        if (status.InterventionShouldSpeak && status.LastIntervention != InterventionKind.RespondToUser)
+        {
+            _ = EnrichProactiveReactionAsync(status);
+        }
+    }
+
+    private void UpdateModelStatus(RuntimeStatusSnapshot status)
+    {
+        var description = DescribeModelStatus(status);
+        if (_modelStatusMenuItem is not null)
+        {
+            _modelStatusMenuItem.Text = $"模型：{description}";
+        }
+        var tooltip = $"Piko · {description}";
+        _trayIcon.Text = tooltip[..Math.Min(63, tooltip.Length)];
+    }
+
+    private static string DescribeModelStatus(RuntimeStatusSnapshot status)
+    {
+        var provider = status.ProviderMode switch
+        {
+            AiProviderMode.OpenAiApi => "OpenAI API",
+            AiProviderMode.LocalCompatible => "本地模型",
+            _ => "已关闭"
+        };
+        return status.ModelHealth switch
+        {
+            "healthy" => $"{provider} 已连接",
+            "error" => $"{provider} 异常（{DescribeModelError(status.ModelLastError)}）",
+            "not_tested" => $"{provider} 未测试",
+            _ => provider
+        };
+    }
+
+    private static string DescribeModelError(string reason) => reason switch
+    {
+        "api_key_unavailable" => "没有找到 API Key。请在设置中填写后保存。",
+        "credential_unavailable" => "Windows 凭据管理器当前不可用。",
+        "http_400" or "invalid_plan_shape" or "invalid_plan_json" => "请求或模型输出格式不兼容。",
+        "http_401" => "API Key 无效或已失效。",
+        "http_403" => "当前账号或项目没有调用该模型的权限。",
+        "http_404" => "API 地址或模型 ID 不存在。",
+        "http_422" => "模型不接受当前结构化请求。",
+        "http_429" => "请求达到速率或额度限制，请稍后重试并检查账户额度。",
+        "timeout" => "连接超时。本地模型可能尚未加载完成。",
+        "provider_error" => "无法连接服务，或服务返回了无效响应。",
+        "model_disabled" => "模型尚未启用。",
+        _ when reason.StartsWith("http_5", StringComparison.Ordinal) => "模型服务暂时不可用。",
+        _ => $"连接失败：{reason}"
+    };
+
+    private async Task EnrichProactiveReactionAsync(RuntimeStatusSnapshot status)
+    {
+        try
+        {
+            var result = await _runtimeProcessManager.PlanAgentAsync(
+                "Generate Piko's brief proactive expression for this already-approved local event. " +
+                $"Semantic event: {status.InterventionSemanticAction}; reason: {status.InterventionReason}. " +
+                "Do not propose tools. Return a warm, concise pet response and an appropriate emotion/action.");
+            if (!result.Available || result.ToolProposals.Count > 0)
+            {
+                return;
+            }
+
+            _pendingReaction = _mind.ReactToModel(
+                result.Message,
+                result.Emotion,
+                result.Action,
+                _settings.ShowMessages);
+            _logger.Info($"Proactive model expression accepted (emotion={result.Emotion}, action={result.Action})");
+        }
+        catch (Exception exception)
+        {
+            _logger.Info($"Proactive model expression unavailable; local PetMind fallback kept ({exception.GetType().Name})");
+        }
     }
 
     private void SaveSettings(bool cleanExit)
@@ -846,3 +1014,4 @@ public partial class PetWindow : Window
         _ => mode.ToString()
     };
 }
+

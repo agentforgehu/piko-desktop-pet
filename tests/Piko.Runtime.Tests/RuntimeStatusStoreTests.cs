@@ -29,12 +29,19 @@ public sealed class RuntimeStatusStoreTests
                 LastInterventionAt: DateTimeOffset.UnixEpoch.AddSeconds(1),
                 InterventionSemanticAction: "development.offer-help",
                 InterventionShouldSpeak: true,
-                InterventionReason: "repeated_build_failure");
+                InterventionReason: "repeated_build_failure",
+                ProviderMode: AiProviderMode.OpenAiApi,
+                ModelHealth: "healthy",
+                ModelLastError: "none",
+                ModelLastCheckedAt: DateTimeOffset.UnixEpoch.AddSeconds(2));
 
             store.Save(status);
             var replay = store.Load();
 
             Assert.Equal(status, replay);
+            Assert.Equal(AiProviderMode.OpenAiApi, replay?.ProviderMode);
+            Assert.Equal("healthy", replay?.ModelHealth);
+            Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(2), replay?.ModelLastCheckedAt);
             var json = File.ReadAllText(path);
             Assert.DoesNotContain("windowTitle", json, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("filePath", json, StringComparison.OrdinalIgnoreCase);
@@ -45,3 +52,4 @@ public sealed class RuntimeStatusStoreTests
         }
     }
 }
+
