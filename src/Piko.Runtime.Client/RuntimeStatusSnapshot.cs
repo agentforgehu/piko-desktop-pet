@@ -21,7 +21,11 @@ public sealed record RuntimeStatusSnapshot(
     DateTimeOffset? LastInterventionAt = null,
     string InterventionSemanticAction = "none",
     bool InterventionShouldSpeak = false,
-    string InterventionReason = "none")
+    string InterventionReason = "none",
+    AiProviderMode ProviderMode = AiProviderMode.Disabled,
+    string ModelHealth = "disabled",
+    string ModelLastError = "none",
+    DateTimeOffset? ModelLastCheckedAt = null)
 {
     public const int CurrentSchemaVersion = 2;
 
@@ -37,3 +41,4 @@ public sealed record RuntimeStatusSnapshot(
         InterventionKind.None,
         string.Empty);
 }
+

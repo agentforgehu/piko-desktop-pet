@@ -116,6 +116,44 @@ public sealed class PetMind
         return reaction;
     }
 
+    public PetReaction ReactToModel(string message, string emotion, string action, bool policyAllowsSpeech = true)
+    {
+        var safeMessage = string.IsNullOrWhiteSpace(message)
+            ? "我在，正在听你说"
+            : message.Trim();
+        if (safeMessage.Length > 500)
+        {
+            safeMessage = safeMessage[..500];
+        }
+
+        var command = action switch
+        {
+            "celebrate" => PetCommand.Celebrate,
+            "concern" => PetCommand.Concern,
+            "rest" => PetCommand.Rest,
+            _ => PetCommand.Greet
+        };
+        var (valence, arousal, energy) = emotion switch
+        {
+            "happy" => (0.18, 0.12, 0.02),
+            "excited" => (0.26, 0.26, 0.04),
+            "concerned" => (-0.12, 0.10, -0.02),
+            "calm" => (0.08, -0.10, -0.01),
+            _ => (0.04, 0.02, 0.0)
+        };
+
+        var reaction = Create(
+            command,
+            safeMessage,
+            policyAllowsSpeech,
+            valence,
+            arousal,
+            energy,
+            0.025 * _personality.Warmth);
+        Emotion = reaction.Emotion;
+        return reaction;
+    }
+
     private PetReaction Create(
         PetCommand command,
         string message,
@@ -138,3 +176,4 @@ public sealed class PetMind
             ? Math.Min(target, value + maximumDelta)
             : Math.Max(target, value - maximumDelta);
 }
+

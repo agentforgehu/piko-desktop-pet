@@ -2,9 +2,9 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Piko 设置"
-        Width="460"
-        Height="740"
-        ResizeMode="NoResize"
+        Width="520"
+        Height="820"
+        MinHeight="680"
         WindowStartupLocation="CenterScreen"
         Background="#F7F4EE"
         FontFamily="Microsoft YaHei UI">
@@ -32,29 +32,61 @@
             <CheckBox x:Name="StartupCheck" Margin="0,8" FontSize="15" Content="登录 Windows 后自动启动" />
             <Separator Margin="0,10,0,6" />
             <TextBlock Margin="0,4" FontSize="15" FontWeight="SemiBold" Text="后台感知与 Agent 权限" />
+            <CheckBox x:Name="ForegroundActivityCheck" Margin="0,8" FontSize="15" Content="感知前台活动类别（开发、聊天、影视、游戏；不读取内容）" />
             <CheckBox x:Name="DevelopmentCheck" Margin="0,8" FontSize="15" Content="感知开发摘要（构建、测试、错误数量）" />
             <CheckBox x:Name="GitCheck" Margin="0,8" FontSize="15" Content="感知 Git 摘要（分支和变更数量，不读取代码）" />
             <CheckBox x:Name="AgentReadCheck" Margin="0,8" FontSize="15" Content="允许 Agent 只读工具（写入仍需逐次批准）" />
             <CheckBox x:Name="MemoryCheck" Margin="0,8" FontSize="15" Content="启用加密本地记忆（可随时查看和全部删除）" />
-            <CheckBox x:Name="CloudAiCheck" Margin="0,8" FontSize="15" Content="启用云端 AI（仅发送经过过滤的情境和主动提问）" />
-            <TextBlock Margin="0,8,0,3" Text="AI API 地址" />
+            <Separator Margin="0,10,0,6" />
+            <TextBlock Margin="0,4" FontSize="15" FontWeight="SemiBold" Text="模型与宠物人格" />
+            <TextBlock Margin="0,8,0,3" Text="模型接入" />
+            <ComboBox x:Name="ProviderCombo" Height="32" Padding="6,3">
+                <ComboBoxItem Content="关闭模型（保留本地动作）" />
+                <ComboBoxItem Content="OpenAI API" />
+                <ComboBoxItem Content="本地 OpenAI-compatible 模型" />
+            </ComboBox>
+            <TextBlock Margin="0,8,0,3" Text="OpenAI API 地址" />
             <TextBox x:Name="AiEndpointText" Height="30" Padding="6,3" />
-            <TextBlock Margin="0,8,0,3" Text="模型" />
+            <TextBlock Margin="0,8,0,3" Text="OpenAI 模型" />
             <TextBox x:Name="AiModelText" Height="30" Padding="6,3" />
             <TextBlock Margin="0,8,0,3" Text="API Key（留空则保持 Windows 凭据管理器中的现有值）" />
             <PasswordBox x:Name="AiApiKeyPassword" Height="30" Padding="6,3" />
             <CheckBox x:Name="ClearAiKeyCheck" Margin="0,8" Content="删除已保存的 API Key" />
+            <TextBlock Margin="0,8,0,3" Text="本地兼容接口（只允许 127.0.0.1 / localhost）" />
+            <TextBox x:Name="LocalAiEndpointText" Height="30" Padding="6,3" />
+            <TextBlock Margin="0,8,0,3" Text="本地模型 ID" />
+            <TextBox x:Name="LocalAiModelText" Height="30" Padding="6,3" />
+            <TextBlock Margin="0,10,0,3" Text="称呼用户" />
+            <ComboBox x:Name="AddressModeCombo" Height="32" Padding="6,3">
+                <ComboBoxItem Content="主人" />
+                <ComboBoxItem Content="使用你的名字" />
+                <ComboBoxItem Content="其他称呼" />
+            </ComboBox>
+            <TextBlock Margin="0,8,0,3" Text="你的名字（选择“使用你的名字”时生效）" />
+            <TextBox x:Name="UserNameText" Height="30" Padding="6,3" />
+            <TextBlock Margin="0,8,0,3" Text="其他称呼" />
+            <TextBox x:Name="CustomAddressText" Height="30" Padding="6,3" />
+            <TextBlock Margin="0,8,0,3" Text="性格" />
+            <TextBox x:Name="PersonalityText" Height="30" Padding="6,3" />
+            <TextBlock Margin="0,8,0,3" Text="主动程度" />
+            <ComboBox x:Name="ProactivityCombo" Height="32" Padding="6,3">
+                <ComboBoxItem Content="低（只在明确事件时开口）" />
+                <ComboBoxItem Content="中（适度关心和提醒）" />
+                <ComboBoxItem Content="高（更频繁地主动互动）" />
+            </ComboBox>
         </StackPanel>
         </ScrollViewer>
 
         <Border Grid.Row="2" Margin="0,20,0,14" Padding="14" Background="#E9F4EF" CornerRadius="10">
             <TextBlock Foreground="#35564A" TextWrapping="Wrap"
-                       Text="标题、路径、终端正文、截图和麦克风默认关闭。开发与 Git 开关只放行摘要；Agent 写文件、运行命令或联网仍必须逐次批准。ESP32 只读取 Nomi 风格语义状态。" />
+                       Text="硬性隐私边界：不截图、不读取浏览器内容、不发送完整代码、不记录键盘内容。前台活动只保留类别；开发、Git 与文件感知只放行摘要。Agent 写文件、运行命令或联网仍必须逐次批准。" />
         </Border>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Width="86" Height="34" Margin="0,0,10,0" Click="Cancel_Click">取消</Button>
-            <Button Width="96" Height="34" IsDefault="True" Click="Save_Click">保存</Button>
+            <Button Width="128" Height="34" Margin="0,0,10,0" Click="SaveAndTest_Click">保存并测试模型</Button>
+            <Button Width="96" Height="34" IsDefault="True" Click="Save_Click">仅保存</Button>
         </StackPanel>
     </Grid>
 </Window>
+

@@ -8,6 +8,7 @@ using Piko.Agent.Tools;
 using Piko.Agent.Tools.Implementations;
 using Piko.Context.Events;
 using Piko.Context.Interventions;
+using Piko.Context.Situations;
 using Piko.Context.Windows.Observation;
 using Piko.Memory;
 using Piko.Runtime.Ipc;
@@ -53,7 +54,27 @@ public sealed class PikoRuntimeHost
         var startedAt = DateTimeOffset.UtcNow;
         var statusStore = new RuntimeStatusStore(_paths.StatusFile);
         var runtimeSettings = RuntimeUserSettingsFile.Load(_paths.SettingsFile);
-        using var engine = new ContextRuntimeEngine(runtimeSettings.ToPrivacyProfile());
+        var proactiveOptions = runtimeSettings.Proactivity switch
+        {
+            PetProactivity.High => new InterventionPolicyOptions
+            {
+                ProactiveSpeechLimitPerHour = 5,
+                SameActionCooldown = TimeSpan.FromMinutes(8)
+            },
+            PetProactivity.Medium => new InterventionPolicyOptions
+            {
+                ProactiveSpeechLimitPerHour = 2,
+                SameActionCooldown = TimeSpan.FromMinutes(20)
+            },
+            _ => new InterventionPolicyOptions
+            {
+                ProactiveSpeechLimitPerHour = 1,
+                SameActionCooldown = TimeSpan.FromMinutes(40)
+            }
+        };
+        using var engine = new ContextRuntimeEngine(
+            runtimeSettings.ToPrivacyProfile(),
+            interventions: new InterventionPolicy(proactiveOptions));
         SqliteMemoryStore? memoryStore = null;
         var memoryHealth = runtimeSettings.MemoryEnabled ? "starting" : "disabled";
         if (runtimeSettings.MemoryEnabled)
@@ -77,22 +98,36 @@ public sealed class PikoRuntimeHost
         var status = RuntimeStatusSnapshot.Starting(startedAt) with
         {
             MemoryHealth = memoryHealth,
-            CloudAiEnabled = runtimeSettings.CloudAiEnabled,
-            AgentReadEnabled = runtimeSettings.AgentReadEnabled
+            CloudAiEnabled = runtimeSettings.EffectiveAiProviderMode == AiProviderMode.OpenAiApi,
+            AgentReadEnabled = runtimeSettings.AgentReadEnabled,
+            ProviderMode = runtimeSettings.EffectiveAiProviderMode,
+            ModelHealth = runtimeSettings.EffectiveAiProviderMode == AiProviderMode.Disabled
+                ? "disabled"
+                : "not_tested"
         };
         statusStore.Save(status);
 
         using var agentHttpClient = new HttpClient();
-        IAiProvider aiProvider = _aiProviderOverride ?? (runtimeSettings.CloudAiEnabled
-            ? new OpenAiResponsesProvider(
+        var providerMode = runtimeSettings.EffectiveAiProviderMode;
+        IAiProvider aiProvider = _aiProviderOverride ?? providerMode switch
+        {
+            AiProviderMode.OpenAiApi => new OpenAiResponsesProvider(
                 agentHttpClient,
                 new CredentialAiApiKeySource(),
                 new OpenAiResponsesOptions
                 {
                     Endpoint = new Uri(runtimeSettings.AiEndpoint),
                     Model = runtimeSettings.AiModel
-                })
-            : new DisabledAiProvider());
+                }),
+            AiProviderMode.LocalCompatible => new OpenAiCompatibleChatProvider(
+                agentHttpClient,
+                new OpenAiCompatibleChatOptions
+                {
+                    Endpoint = new Uri(runtimeSettings.LocalAiEndpoint),
+                    Model = runtimeSettings.LocalAiModel
+                }),
+            _ => new DisabledAiProvider()
+        };
         var agentTools = new AgentToolRegistry();
         agentTools.Register(new GitStatusTool());
         agentTools.Register(new WorkspaceFileReadTool());
@@ -104,6 +139,7 @@ public sealed class PikoRuntimeHost
             agentAudit);
         var pendingAgentProposals = new ConcurrentDictionary<Guid, PendingAgentProposal>();
         var source = new WindowsContextEventSource(Guid.NewGuid().ToString("N"));
+        var latestActivityCategory = ApplicationCategory.Unknown;
         var ipc = new RuntimeIpcServer(async (request, requestCancellation) =>
         {
             if (request.Type == "health.get")
@@ -207,15 +243,17 @@ public sealed class PikoRuntimeHost
                     return RuntimeResponse.Fail(request.RequestId, "invalid_agent_payload");
                 }
 
-                if (!runtimeSettings.CloudAiEnabled)
+                if (providerMode == AiProviderMode.Disabled)
                 {
                     return RuntimeResponse.Ok(
                         request.RequestId,
                         "agent.plan",
                         new RuntimeAgentPlanResponse(
                             false,
-                            "cloud_ai_disabled",
+                            "model_disabled",
                             string.Empty,
+                            "neutral",
+                            "listen",
                             Array.Empty<RuntimeAgentToolProposal>(),
                             "disabled",
                             "none"));
@@ -229,12 +267,26 @@ public sealed class PikoRuntimeHost
                     evidence = currentSituation.Evidence,
                     consecutiveBuildFailures = currentSituation.ConsecutiveBuildFailures,
                     isActivelyTyping = currentSituation.UserIsActivelyTyping,
-                    isFullscreen = currentSituation.IsFullscreen
+                    isFullscreen = currentSituation.IsFullscreen,
+                    activityCategory = runtimeSettings.ForegroundActivityAwarenessEnabled
+                        ? latestActivityCategory.ToString()
+                        : "not_authorized",
+                    privacyBoundary = "No screenshots, browser content, full code, window titles, or keyboard content."
                 });
                 var plan = await agentPlanner.PlanAsync(
                     sanitizedContext,
                     agentRequest.UserRequest,
+                    new AgentConversationProfile(
+                        runtimeSettings.ResolveUserAddress(),
+                        runtimeSettings.Personality,
+                        runtimeSettings.Proactivity.ToString().ToLowerInvariant()),
                     requestCancellation).ConfigureAwait(false);
+                status = status with
+                {
+                    ModelHealth = plan.Available ? "healthy" : "error",
+                    ModelLastError = plan.Available ? "none" : plan.Reason,
+                    ModelLastCheckedAt = DateTimeOffset.UtcNow
+                };
                 foreach (var expired in pendingAgentProposals.Where(item => item.Value.ExpiresAt <= DateTimeOffset.UtcNow))
                 {
                     pendingAgentProposals.TryRemove(expired.Key, out _);
@@ -264,6 +316,8 @@ public sealed class PikoRuntimeHost
                         plan.Available,
                         plan.Reason,
                         plan.Message,
+                        plan.Emotion,
+                        plan.Action,
                         proposals,
                         plan.Provider,
                         plan.Model));
@@ -403,6 +457,9 @@ public sealed class PikoRuntimeHost
             while (!runtimeToken.IsCancellationRequested)
             {
                 var snapshot = _probe.Capture();
+                latestActivityCategory = runtimeSettings.ForegroundActivityAwarenessEnabled
+                    ? snapshot.ForegroundApplicationCategory
+                    : ApplicationCategory.Unknown;
                 foreach (var contextEvent in source.Diff(snapshot))
                 {
                     var update = await engine.ProcessAsync(contextEvent, cancellationToken: runtimeToken)
@@ -425,8 +482,9 @@ public sealed class PikoRuntimeHost
                     Situation = situation.Kind,
                     SituationConfidence = situation.Confidence,
                     MemoryHealth = memoryHealth,
-                    CloudAiEnabled = runtimeSettings.CloudAiEnabled,
-                    AgentReadEnabled = runtimeSettings.AgentReadEnabled
+                    CloudAiEnabled = providerMode == AiProviderMode.OpenAiApi,
+                    AgentReadEnabled = runtimeSettings.AgentReadEnabled,
+                    ProviderMode = providerMode
                 };
                 statusStore.Save(status);
                 await Task.Delay(TimeSpan.FromSeconds(1), runtimeToken).ConfigureAwait(false);
@@ -580,3 +638,4 @@ public sealed class PikoRuntimeHost
         return false;
     }
 }
+

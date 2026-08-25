@@ -77,6 +77,8 @@ public sealed class OpenAiResponsesProvider : IAiProvider
             properties = new
             {
                 message = new { type = "string" },
+                emotion = new { type = "string", @enum = new[] { "neutral", "happy", "concerned", "excited", "calm" } },
+                action = new { type = "string", @enum = new[] { "listen", "greet", "concern", "celebrate", "rest" } },
                 toolCalls = new
                 {
                     type = "array",
@@ -110,7 +112,7 @@ public sealed class OpenAiResponsesProvider : IAiProvider
                     }
                 }
             },
-            required = new[] { "message", "toolCalls" }
+            required = new[] { "message", "emotion", "action", "toolCalls" }
         }
     };
 
@@ -272,3 +274,4 @@ public sealed class OpenAiResponsesProvider : IAiProvider
         return Encoding.UTF8.GetString(destination.ToArray());
     }
 }
+

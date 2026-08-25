@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Piko.Desktop.Services;
 
@@ -7,7 +8,8 @@ public sealed class SettingsStore
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     private readonly AppPaths _paths;
@@ -40,3 +42,4 @@ public sealed class SettingsStore
         File.Move(temporary, _paths.SettingsFile, true);
     }
 }
+

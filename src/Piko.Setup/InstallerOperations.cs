@@ -21,7 +21,7 @@ internal static class InstallerOperations
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
                 .InformationalVersion;
             return string.IsNullOrWhiteSpace(informational)
-                ? "0.2.2"
+                ? "0.0.0"
                 : informational.Split('+', 2)[0];
         }
     }
@@ -281,3 +281,4 @@ internal static class InstallerOperations
         }
     }
 }
+

@@ -71,6 +71,44 @@ public sealed class OpenAiResponsesProviderTests
             options));
     }
 
+    [Fact]
+    public async Task LocalCompatibleProviderUsesLoopbackChatCompletionsWithoutApiKey()
+    {
+        const string plan = "{\"message\":\"主人，我在。\",\"emotion\":\"happy\",\"action\":\"greet\",\"toolCalls\":[]}";
+        var responseJson = JsonSerializer.Serialize(new
+        {
+            choices = new[] { new { message = new { content = plan } } }
+        });
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+        });
+        var provider = new OpenAiCompatibleChatProvider(
+            new HttpClient(handler),
+            new OpenAiCompatibleChatOptions
+            {
+                Endpoint = new Uri("http://127.0.0.1:11434/v1/"),
+                Model = "piko-local"
+            });
+
+        var result = await provider.CompleteAsync(Request(), CancellationToken.None);
+
+        Assert.True(result.Available);
+        Assert.Equal(plan, result.Text);
+        Assert.Null(handler.AuthorizationScheme);
+        using var body = JsonDocument.Parse(handler.Body!);
+        Assert.Equal("piko-local", body.RootElement.GetProperty("model").GetString());
+        Assert.Equal("json_object", body.RootElement.GetProperty("response_format").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void LocalCompatibleProviderRejectsNonLoopbackEndpoint()
+    {
+        Assert.Throws<ArgumentException>(() => new OpenAiCompatibleChatProvider(
+            new HttpClient(new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK))),
+            new OpenAiCompatibleChatOptions { Endpoint = new Uri("https://example.com/v1/") }));
+    }
+
     private static OpenAiResponsesOptions Options() => new()
     {
         Endpoint = new Uri("https://api.openai.com/v1/"),
@@ -107,3 +145,4 @@ public sealed class OpenAiResponsesProviderTests
         }
     }
 }
+
