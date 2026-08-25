@@ -2,9 +2,18 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+    paths:
+      - release-version.txt
   workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version to publish
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -24,20 +33,31 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: integrations/vscode/package-lock.json
+      - name: Resolve release version
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_NAME -like 'v*') {
+            $env:GITHUB_REF_NAME.Substring(1)
+          } elseif ('${{ inputs.version }}') {
+            '${{ inputs.version }}'
+          } else {
+            (Get-Content -LiteralPath release-version.txt -Raw).Trim()
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid semantic version: $version"
+          }
+          "PIKO_VERSION=$version" | Add-Content -LiteralPath $env:GITHUB_ENV
       - name: Install VS Code bridge dependencies
         working-directory: integrations/vscode
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Build and package
         shell: pwsh
-        run: |
-          $version = if ($env:GITHUB_REF_NAME -like 'v*') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.2.1' }
-          .\scripts\publish.ps1 -Version $version
+        run: .\scripts\publish.ps1 -Version $env:PIKO_VERSION
       - name: Stability and resource gate
         shell: pwsh
         run: |
-          $version = if ($env:GITHUB_REF_NAME -like 'v*') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.2.1' }
-          $duration = if ($version.Contains('-') -or $version.StartsWith('0.')) { 60 } else { 300 }
-          .\scripts\stability.ps1 -Version $version -DurationSeconds $duration
+          $duration = if ($env:PIKO_VERSION.Contains('-') -or $env:PIKO_VERSION.StartsWith('0.')) { 60 } else { 300 }
+          .\scripts\stability.ps1 -Version $env:PIKO_VERSION -DurationSeconds $duration
       - name: Upload workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -50,9 +70,12 @@ jobs:
             releases/stability-report-*.json
             releases/*.sha256.txt
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
+          tag_name: v${{ env.PIKO_VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: Piko v${{ env.PIKO_VERSION }}
+          prerelease: true
           generate_release_notes: true
           files: |
             releases/*.zip
