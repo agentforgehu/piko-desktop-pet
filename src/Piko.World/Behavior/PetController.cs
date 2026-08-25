@@ -32,7 +32,11 @@ public sealed class PetController
         ArgumentNullException.ThrowIfNull(input);
 
         var dt = Math.Clamp(elapsedSeconds, 0.001, 0.1);
-        var state = State with { ModeElapsedSeconds = State.ModeElapsedSeconds + dt };
+        var state = State with
+        {
+            ModeElapsedSeconds = State.ModeElapsedSeconds + dt,
+            Emotion = input.Emotion == default ? State.Emotion : input.Emotion
+        };
 
         if (input.IsDragging && input.DragFeet is { } dragFeet)
         {
@@ -46,7 +50,8 @@ public sealed class PetController
                 TargetId = null,
                 TargetX = null,
                 ModeElapsedSeconds = 0,
-                Message = "被你抱起来了"
+                Message = "被你抱起来了",
+                SpeechVisible = true
             };
             return State;
         }
@@ -62,9 +67,19 @@ public sealed class PetController
             };
         }
 
+        if (input.Reaction is { } reaction)
+        {
+            state = StartCommand(world, state, reaction.Command, input.Cursor) with
+            {
+                Message = reaction.Message,
+                SpeechVisible = reaction.ShouldSpeak,
+                Emotion = reaction.Emotion
+            };
+        }
+
         if (input.Command is { } command)
         {
-            state = StartCommand(world, state, command, input.Cursor);
+            state = StartCommand(world, state, command, input.Cursor) with { SpeechVisible = true };
         }
 
         state = state.Mode switch
@@ -74,6 +89,10 @@ public sealed class PetController
             PetMode.Walking => AdvanceWalking(world, state, dt),
             PetMode.Peeking when state.ModeElapsedSeconds >= 5 => Recall(world, "躲猫猫结束"),
             PetMode.Greeting when state.ModeElapsedSeconds >= 1.5 => ToStanding(world, state, "陪着你"),
+            PetMode.Concerned when state.ModeElapsedSeconds >= 3 =>
+                ToStanding(world, state, "我会安静陪着你") with { SpeechVisible = false },
+            PetMode.Celebrating when state.ModeElapsedSeconds >= 2.2 =>
+                ToStanding(world, state, "继续加油") with { SpeechVisible = true },
             PetMode.Resting when state.ModeElapsedSeconds >= 8 => ToStanding(world, state, "睡醒了"),
             PetMode.PointerDwell => AdvancePointerApproach(world, state, dt),
             _ => FollowSupportOrFall(world, state)
@@ -87,7 +106,8 @@ public sealed class PetController
                 ModeElapsedSeconds = state.Mode == PetMode.ObservingTransfer ? state.ModeElapsedSeconds : 0,
                 Message = input.FileActivity.Progress is { } progress
                     ? $"进度大约 {progress:P0}"
-                    : "正在观察文件活动"
+                    : "正在观察文件活动",
+                SpeechVisible = true
             };
         }
         else if (state.Mode == PetMode.ObservingTransfer)
@@ -98,14 +118,14 @@ public sealed class PetController
         if (input.PointerAwarenessEnabled && input.CursorIsIdle &&
             state.Mode == PetMode.Standing && TryStartPointerDwell(world, state, input.Cursor, out var pointerState))
         {
-            state = pointerState;
+            state = pointerState with { SpeechVisible = true };
         }
 
         if (input.AutonomousBehaviorEnabled && state.Mode == PetMode.Standing &&
             state.ModeElapsedSeconds >= _options.AutonomousIntervalSeconds)
         {
             var autonomousCommand = NextAutonomousCommand(input.WindowExplorationEnabled);
-            state = StartCommand(world, state, autonomousCommand, input.Cursor);
+            state = StartCommand(world, state, autonomousCommand, input.Cursor) with { SpeechVisible = true };
         }
 
         State = state;
@@ -135,6 +155,20 @@ public sealed class PetController
             Mode = PetMode.Greeting,
             ModeElapsedSeconds = 0,
             Message = "你好呀"
+        },
+        PetCommand.Concern => state with
+        {
+            Mode = PetMode.Concerned,
+            Velocity = default,
+            ModeElapsedSeconds = 0,
+            Message = "我在担心你"
+        },
+        PetCommand.Celebrate => state with
+        {
+            Mode = PetMode.Celebrating,
+            Velocity = default,
+            ModeElapsedSeconds = 0,
+            Message = "成功啦！"
         },
         _ => state
     };

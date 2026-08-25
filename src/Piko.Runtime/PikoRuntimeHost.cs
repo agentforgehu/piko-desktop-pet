@@ -154,14 +154,11 @@ public sealed class PikoRuntimeHost
                     cancellationToken: requestCancellation).ConfigureAwait(false);
                 if (update.Accepted)
                 {
-                    status = status with
-                    {
-                        LastHeartbeatAt = DateTimeOffset.UtcNow,
-                        Situation = update.Situation.Kind,
-                        SituationConfidence = update.Situation.Confidence,
-                        LastIntervention = update.Intervention.Kind,
-                        LastAcceptedEventType = contextEvent.Type
-                    };
+                    status = ApplyAcceptedUpdate(
+                        status,
+                        update,
+                        contextEvent.Type,
+                        DateTimeOffset.UtcNow);
                     if (activeMemoryStore is not null &&
                         TryCreateMemoryDraft(contextEvent, out var draft))
                     {
@@ -405,8 +402,6 @@ public sealed class PikoRuntimeHost
         {
             while (!runtimeToken.IsCancellationRequested)
             {
-                var lastEventType = status.LastAcceptedEventType;
-                var lastIntervention = InterventionKind.None;
                 var snapshot = _probe.Capture();
                 foreach (var contextEvent in source.Diff(snapshot))
                 {
@@ -414,26 +409,25 @@ public sealed class PikoRuntimeHost
                         .ConfigureAwait(false);
                     if (update.Accepted)
                     {
-                        lastEventType = contextEvent.Type;
-                        lastIntervention = update.Intervention.Kind;
+                        status = ApplyAcceptedUpdate(
+                            status,
+                            update,
+                            contextEvent.Type,
+                            DateTimeOffset.UtcNow);
                     }
                 }
 
                 var situation = engine.CurrentSituation;
-                status = new RuntimeStatusSnapshot(
-                    RuntimeStatusSnapshot.CurrentSchemaVersion,
-                    RuntimeProductInfo.Version,
-                    Environment.ProcessId,
-                    startedAt,
-                    DateTimeOffset.UtcNow,
-                    "healthy",
-                    situation.Kind,
-                    situation.Confidence,
-                    lastIntervention,
-                    lastEventType,
-                    memoryHealth,
-                    runtimeSettings.CloudAiEnabled,
-                    runtimeSettings.AgentReadEnabled);
+                status = status with
+                {
+                    LastHeartbeatAt = DateTimeOffset.UtcNow,
+                    Health = "healthy",
+                    Situation = situation.Kind,
+                    SituationConfidence = situation.Confidence,
+                    MemoryHealth = memoryHealth,
+                    CloudAiEnabled = runtimeSettings.CloudAiEnabled,
+                    AgentReadEnabled = runtimeSettings.AgentReadEnabled
+                };
                 statusStore.Save(status);
                 await Task.Delay(TimeSpan.FromSeconds(1), runtimeToken).ConfigureAwait(false);
             }
@@ -453,6 +447,35 @@ public sealed class PikoRuntimeHost
                 // Normal runtime shutdown.
             }
         }
+    }
+
+    private static RuntimeStatusSnapshot ApplyAcceptedUpdate(
+        RuntimeStatusSnapshot status,
+        ContextRuntimeUpdate update,
+        string eventType,
+        DateTimeOffset now)
+    {
+        var next = status with
+        {
+            LastHeartbeatAt = now,
+            Situation = update.Situation.Kind,
+            SituationConfidence = update.Situation.Confidence,
+            LastAcceptedEventType = eventType
+        };
+        if (update.Intervention.Kind == InterventionKind.None)
+        {
+            return next;
+        }
+
+        return next with
+        {
+            LastIntervention = update.Intervention.Kind,
+            InterventionSequence = status.InterventionSequence + 1,
+            LastInterventionAt = now,
+            InterventionSemanticAction = update.Intervention.SemanticAction,
+            InterventionShouldSpeak = update.Intervention.ShouldSpeak,
+            InterventionReason = update.Intervention.Reason
+        };
     }
 
     private static bool TryAuthorizeExternalEvent(

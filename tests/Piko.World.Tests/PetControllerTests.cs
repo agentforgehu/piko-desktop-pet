@@ -10,6 +10,43 @@ public sealed class PetControllerTests
     private readonly DesktopWorldCompiler _compiler = new();
 
     [Fact]
+    public void PetMind_ConcernStaysSilentAndCelebrationChangesEmotion()
+    {
+        var mind = new PetMind();
+        var baseline = mind.Emotion;
+
+        var concern = mind.React(PetStimulus.SilentConcern, policyAllowsSpeech: true);
+
+        Assert.Equal(PetCommand.Concern, concern.Command);
+        Assert.False(concern.ShouldSpeak);
+        Assert.True(concern.Emotion.Valence < baseline.Valence);
+
+        var celebration = mind.React(PetStimulus.Celebrate, policyAllowsSpeech: true);
+
+        Assert.Equal(PetCommand.Celebrate, celebration.Command);
+        Assert.True(celebration.ShouldSpeak);
+        Assert.True(celebration.Emotion.Valence > concern.Emotion.Valence);
+        Assert.True(celebration.Emotion.Arousal > concern.Emotion.Arousal);
+    }
+
+    [Fact]
+    public void Reaction_DrivesConcernedModeAndSpeechPolicy()
+    {
+        var world = World();
+        var controller = new PetController();
+        controller.Initialize(world);
+        var mind = new PetMind();
+        var reaction = mind.React(PetStimulus.SilentConcern, policyAllowsSpeech: false);
+
+        controller.Tick(world, Input(reaction: reaction, emotion: mind.Emotion), 0.016);
+
+        Assert.Equal(PetMode.Concerned, controller.State.Mode);
+        Assert.False(controller.State.SpeechVisible);
+        Assert.Contains("安静", controller.State.Message);
+        Assert.Equal(mind.Emotion, controller.State.Emotion);
+    }
+
+    [Fact]
     public void FullscreenPolicy_RecognizesExactAndBorderlessCoverage()
     {
         var monitor = new PixelRect(1920, 0, 3840, 1080);
@@ -260,7 +297,9 @@ public sealed class PetControllerTests
         FileActivitySignal? fileActivity = null,
         PixelPoint? cursor = null,
         bool cursorIsIdle = false,
-        bool pointerAwareness = false) => new(
+        bool pointerAwareness = false,
+        PetReaction? reaction = null,
+        PetEmotionState emotion = default) => new(
         cursor ?? new PixelPoint(100, 100),
         cursorIsIdle,
         isDragging,
@@ -269,7 +308,9 @@ public sealed class PetControllerTests
         command,
         false,
         pointerAwareness,
-        true);
+        true,
+        reaction,
+        emotion);
 
     private static void Advance(
         PetController controller,

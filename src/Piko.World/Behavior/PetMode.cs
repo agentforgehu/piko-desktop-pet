@@ -12,7 +12,9 @@ public enum PetMode
     PointerDwell,
     ObservingTransfer,
     Resting,
-    Greeting
+    Greeting,
+    Concerned,
+    Celebrating
 }
 
 public enum PetCommand
@@ -23,5 +25,7 @@ public enum PetCommand
     Jump,
     Peek,
     Rest,
-    Greet
+    Greet,
+    Concern,
+    Celebrate
 }

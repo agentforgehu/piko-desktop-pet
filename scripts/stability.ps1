@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.2.1',
+    [string]$Version = '0.2.2',
     [int]$DurationSeconds = 1800,
     [int]$SampleSeconds = 2,
     [int]$MaximumDesktopWorkingSetMb = 350,
@@ -107,7 +107,7 @@ try {
         if (Test-Path -LiteralPath $statusPath) {
             $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
             $heartbeatAge = ($now - [DateTimeOffset]::Parse($status.lastHeartbeatAt)).TotalSeconds
-            $runtimeHealthy = $status.schemaVersion -eq 1 -and
+            $runtimeHealthy = $status.schemaVersion -eq 2 -and
                 $status.health -eq 'healthy' -and
                 $heartbeatAge -lt 4
         }

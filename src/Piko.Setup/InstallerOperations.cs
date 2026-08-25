@@ -21,7 +21,7 @@ internal static class InstallerOperations
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
                 .InformationalVersion;
             return string.IsNullOrWhiteSpace(informational)
-                ? "0.2.1"
+                ? "0.2.2"
                 : informational.Split('+', 2)[0];
         }
     }
@@ -150,7 +150,7 @@ internal static class InstallerOperations
                 }
 
                 var processPath = TryGetProcessPath(process);
-                if (processPath is null || !InstallerLayout.IsInside(processPath, InstallerLayout.InstallRoot))
+                if (processPath is null || !InstallerLayout.IsManagedApplicationPath(processPath))
                 {
                     continue;
                 }
@@ -188,7 +188,14 @@ internal static class InstallerOperations
 
             if (!process.WaitForExit(5000))
             {
-                throw new InvalidOperationException("请先从托盘退出 Piko，然后重试安装或卸载。");
+                // A fullscreen-suppressed WPF window has no visible main window to close.
+                // The path guard in EnsureInstalledProcessesStopped makes this fallback
+                // safe: only Piko binaries from a managed install root reach this point.
+                process.Kill(entireProcessTree: true);
+                if (!process.WaitForExit(5000))
+                {
+                    throw new InvalidOperationException("请先从托盘退出 Piko，然后重试安装或卸载。");
+                }
             }
         }
         catch (InvalidOperationException) when (process.HasExited)

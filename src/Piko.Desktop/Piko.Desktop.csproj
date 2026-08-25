@@ -7,9 +7,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Piko</AssemblyName>
     <RootNamespace>Piko.Desktop</RootNamespace>
-    <Version>0.2.1</Version>
-    <AssemblyVersion>0.2.1.0</AssemblyVersion>
-    <FileVersion>0.2.1.0</FileVersion>
+    <Version>0.2.2</Version>
+    <AssemblyVersion>0.2.2.0</AssemblyVersion>
+    <FileVersion>0.2.2.0</FileVersion>
     <Product>Piko Desktop Pet</Product>
     <Description>A local-first Windows desktop pet that lives on real window surfaces.</Description>
     <Authors>Piko contributors</Authors>

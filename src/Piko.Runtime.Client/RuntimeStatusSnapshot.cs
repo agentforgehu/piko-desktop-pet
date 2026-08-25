@@ -16,9 +16,14 @@ public sealed record RuntimeStatusSnapshot(
     string LastAcceptedEventType,
     string MemoryHealth = "disabled",
     bool CloudAiEnabled = false,
-    bool AgentReadEnabled = false)
+    bool AgentReadEnabled = false,
+    long InterventionSequence = 0,
+    DateTimeOffset? LastInterventionAt = null,
+    string InterventionSemanticAction = "none",
+    bool InterventionShouldSpeak = false,
+    string InterventionReason = "none")
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public static RuntimeStatusSnapshot Starting(DateTimeOffset now) => new(
         CurrentSchemaVersion,

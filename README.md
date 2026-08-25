@@ -2,7 +2,7 @@
 
 Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是悬浮聊天按钮，而是把真实窗口、屏幕边缘、鼠标、文件活动和已授权的开发事件当作生活环境。
 
-当前预览版本：`0.2.1`。正式 `1.0` 仍在生产收口阶段。
+当前预览版本：`0.2.2`。正式 `1.0` 仍在生产收口阶段。
 
 ## 已实现
 
@@ -18,6 +18,8 @@ Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是
 - 输出面向未来 ESP32/Nomi 风格屏幕的简化眼睛状态 JSON；
 - 独立用户级 Runtime 后台、受保护命名管道、健康检查与自动恢复；
 - 本地情境引擎和打扰策略，可理解离开/返回、编程、构建、测试与系统状态；
+- 最小 PetMind 情绪与人格闭环，可把关心、问候、帮助和庆祝转成不同动作、眼神与说话策略；
+- 前台游戏或应用进入真正全屏时自动隐藏，退出全屏后恢复；
 - 可选 VS Code Bridge，只发送诊断数量、构建/测试结果和 Git 计数，不发送源码、文件名或终端正文；
 - 可选加密本地记忆和可删除记忆管理界面；
 - 可选 AI Agent：模型只提出结构化计划，1.0 只执行用户确认、限定目录内的只读工具；
@@ -29,7 +31,7 @@ Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是
 
 从 [GitHub Release v0.1.0](https://github.com/agentforgehu/piko-desktop-pet/releases/tag/v0.1.0) 下载 `Piko-0.1.0-win-x64.zip`，解压后双击 `Piko.exe`。发布包自带运行时，不需要安装 .NET。
 
-`0.2.1` 是未签名的 Pre-release，可使用 `scripts/publish.ps1` 生成单文件当前用户安装器、自包含便携包、更新清单和 VS Code 扩展。正式 `1.0` 的发布脚本默认拒绝生成未签名稳定版。
+`0.2.2` 是未签名的 Pre-release，可使用 `scripts/publish.ps1` 生成单文件当前用户安装器、自包含便携包、更新清单和 VS Code 扩展。正式 `1.0` 的发布脚本默认拒绝生成未签名稳定版。
 
 常用操作：
 
@@ -51,7 +53,7 @@ Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是
 .\scripts\verify.ps1
 .\scripts\run-piko.ps1
 .\scripts\publish.ps1
-.\scripts\stability.ps1 -Version 0.2.1 -DurationSeconds 1800
+.\scripts\stability.ps1 -Version 0.2.2 -DurationSeconds 1800
 ```
 
 也可以直接使用标准命令：

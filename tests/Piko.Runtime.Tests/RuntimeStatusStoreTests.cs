@@ -15,16 +15,21 @@ public sealed class RuntimeStatusStoreTests
             var path = Path.Combine(root, "status.json");
             var store = new RuntimeStatusStore(path);
             var status = new RuntimeStatusSnapshot(
-                1,
-                "0.2.1",
+                RuntimeStatusSnapshot.CurrentSchemaVersion,
+                "0.2.2",
                 42,
                 DateTimeOffset.UnixEpoch,
                 DateTimeOffset.UnixEpoch.AddSeconds(1),
                 "healthy",
                 SituationKind.Coding,
                 0.85,
-                InterventionKind.None,
-                "application.foreground.changed");
+                InterventionKind.OfferHelp,
+                "development.build.completed",
+                InterventionSequence: 3,
+                LastInterventionAt: DateTimeOffset.UnixEpoch.AddSeconds(1),
+                InterventionSemanticAction: "development.offer-help",
+                InterventionShouldSpeak: true,
+                InterventionReason: "repeated_build_failure");
 
             store.Save(status);
             var replay = store.Load();

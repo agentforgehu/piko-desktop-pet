@@ -83,6 +83,7 @@ internal static class Program
         }
         catch (Exception exception)
         {
+            TryLogFailure(exception);
             if (!silent)
             {
                 MessageBox.Show(
@@ -93,6 +94,21 @@ internal static class Program
             }
 
             return 1;
+        }
+    }
+
+    private static void TryLogFailure(Exception exception)
+    {
+        try
+        {
+            Directory.CreateDirectory(InstallerLayout.UserDataDirectory);
+            File.AppendAllText(
+                Path.Combine(InstallerLayout.UserDataDirectory, "setup.log"),
+                $"[{DateTimeOffset.Now:O}] {exception}\r\n");
+        }
+        catch
+        {
+            // Installation diagnostics must never hide the original setup failure.
         }
     }
 
