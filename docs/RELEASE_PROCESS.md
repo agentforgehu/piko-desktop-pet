@@ -17,10 +17,16 @@
 ```powershell
 .\scripts\check-version-sync.ps1
 .\scripts\verify.ps1
-.\scripts\publish.ps1
+.\scripts\publish.ps1 -Channel preview
 ```
 
 `check-version-sync.ps1` 是硬门禁。任一必需文档或扩展版本不一致时，验证和发布立即失败。历史 CHANGELOG、历史证据和依赖包自身的版本号不应被批量替换。
 
 发布前还必须完成真实 Desktop/Runtime smoke；正式版继续遵守代码签名、哈希、更新来源和长稳要求。
 
+
+## 1.0 候选与正式发布
+
+候选 PR 使用 `.github/workflows/release-candidate.yml`，生成明确标注的未签名 preview 包和验证证据，不创建稳定版 Release。
+
+正式发布前，按 [1.0 验收清单](RELEASE_1.0_READINESS.md) 完成发布者确认与实机验收，把已验收提交和证据写入 `release-approval.json`。`scripts/check-release-ready.ps1` 不允许产品、脚本或工作流在批准后改变。配置正式签名身份与编译时指纹白名单后，Release 工作流才可生成稳定版。批准前不要合并版本号提交来尝试触发正式发布。

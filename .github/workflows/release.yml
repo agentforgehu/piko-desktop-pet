@@ -21,10 +21,12 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: 8.0.x
@@ -35,11 +37,13 @@ jobs:
           cache-dependency-path: integrations/vscode/package-lock.json
       - name: Resolve release version
         shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           $version = if ($env:GITHUB_REF_NAME -like 'v*') {
             $env:GITHUB_REF_NAME.Substring(1)
-          } elseif ('${{ inputs.version }}') {
-            '${{ inputs.version }}'
+          } elseif ($env:REQUESTED_VERSION) {
+            $env:REQUESTED_VERSION
           } else {
             (Get-Content -LiteralPath release-version.txt -Raw).Trim()
           }
@@ -47,16 +51,55 @@ jobs:
             throw "Invalid semantic version: $version"
           }
           "PIKO_VERSION=$version" | Add-Content -LiteralPath $env:GITHUB_ENV
+          "PIKO_IS_STABLE=$((-not $version.StartsWith('0.') -and -not $version.Contains('-')).ToString().ToLowerInvariant())" | Add-Content -LiteralPath $env:GITHUB_ENV
+      - name: Check stable release acceptance
+        if: env.PIKO_IS_STABLE == 'true'
+        run: ./scripts/check-release-ready.ps1
+      - name: Prepare approved signing identity
+        if: env.PIKO_IS_STABLE == 'true'
+        shell: pwsh
+        env:
+          PIKO_SIGNING_PFX_BASE64: ${{ secrets.PIKO_SIGNING_PFX_BASE64 }}
+          PIKO_SIGNING_PFX_PASSWORD: ${{ secrets.PIKO_SIGNING_PFX_PASSWORD }}
+        run: |
+          if (-not $env:PIKO_SIGNING_PFX_BASE64) { throw 'A production signing identity must be configured first' }
+          $pfx = Join-Path $env:RUNNER_TEMP 'piko-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PIKO_SIGNING_PFX_BASE64))
+            $password = ConvertTo-SecureString $env:PIKO_SIGNING_PFX_PASSWORD -AsPlainText -Force
+            $certificates = @(Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password)
+            $signers = @($certificates | Where-Object { $_.HasPrivateKey })
+            if ($signers.Count -ne 1) { throw 'Expected exactly one signing identity in the PFX' }
+            $cert = $signers[0]
+            $thumbprint = $cert.Thumbprint.ToUpperInvariant()
+            "PIKO_SIGNING_THUMBPRINT=$thumbprint" | Add-Content $env:GITHUB_ENV
+            $trusted = Get-Content src/Piko.Update/TrustedUpdateSigners.cs -Raw
+            if (-not $trusted.ToUpperInvariant().Contains('"' + $thumbprint + '"')) {
+              throw 'The signing identity is not in the compiled TrustedUpdateSigners allowlist'
+            }
+            $signTool = Get-ChildItem "${env:ProgramFiles(x86)}/Windows Kits/10/bin/*/x64/signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $signTool) { throw 'Windows SDK signing tool is missing' }
+            "PIKO_SIGNTOOL=$($signTool.FullName)" | Add-Content $env:GITHUB_ENV
+          } finally {
+            if (Test-Path $pfx) { Remove-Item $pfx -Force }
+          }
       - name: Install VS Code bridge dependencies
         working-directory: integrations/vscode
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify product and extension
+        run: ./scripts/verify.ps1
       - name: Build and package
         shell: pwsh
-        run: .\scripts\publish.ps1 -Version $env:PIKO_VERSION
+        run: |
+          if ($env:PIKO_IS_STABLE -eq 'true') {
+            ./scripts/publish.ps1 -Version $env:PIKO_VERSION -SigningCertificateThumbprint $env:PIKO_SIGNING_THUMBPRINT -SignToolPath $env:PIKO_SIGNTOOL
+          } else {
+            ./scripts/publish.ps1 -Version $env:PIKO_VERSION
+          }
       - name: Stability and resource gate
         shell: pwsh
         run: |
-          $duration = if ($env:PIKO_VERSION.Contains('-') -or $env:PIKO_VERSION.StartsWith('0.')) { 60 } else { 300 }
+          $duration = if ($env:PIKO_VERSION.Contains('-') -or $env:PIKO_VERSION.StartsWith('0.')) { 60 } else { 1800 }
           .\scripts\stability.ps1 -Version $env:PIKO_VERSION -DurationSeconds $duration
       - name: Upload workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -75,7 +118,7 @@ jobs:
           tag_name: v${{ env.PIKO_VERSION }}
           target_commitish: ${{ github.sha }}
           name: Piko v${{ env.PIKO_VERSION }}
-          prerelease: true
+          prerelease: ${{ env.PIKO_IS_STABLE != 'true' }}
           generate_release_notes: true
           files: |
             releases/*.zip
@@ -84,3 +127,9 @@ jobs:
             releases/update-manifest.json
             releases/stability-report-*.json
             releases/*.sha256.txt
+      - name: Remove temporary signing identity
+        if: always() && env.PIKO_SIGNING_THUMBPRINT != ''
+        shell: pwsh
+        run: |
+          $certificate = "Cert:/CurrentUser/My/$env:PIKO_SIGNING_THUMBPRINT"
+          if (Test-Path $certificate) { Remove-Item $certificate -Force }

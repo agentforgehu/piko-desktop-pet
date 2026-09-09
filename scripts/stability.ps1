@@ -10,9 +10,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
-    throw "Invalid semantic version: $Version"
-}
 if ($DurationSeconds -lt 10 -or $DurationSeconds -gt 86400) {
     throw 'DurationSeconds must be between 10 and 86400.'
 }
@@ -25,6 +22,9 @@ $Version = if ([string]::IsNullOrWhiteSpace($Version)) {
     (Get-Content -LiteralPath (Join-Path $projectRoot 'release-version.txt') -Raw).Trim()
 } else {
     $Version
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+    throw "Invalid semantic version: $Version"
 }
 $workspaceRoot = (Resolve-Path (Join-Path $projectRoot '..\..')).Path
 $publishDirectory = Join-Path $projectRoot "releases\Piko-$Version-win-x64"
@@ -41,6 +41,9 @@ $desktopData = Join-Path $testRoot 'desktop'
 $pipeName = "PikoDesktopPet.Stability.$([Guid]::NewGuid().ToString('N'))"
 $reportPath = Join-Path $projectRoot "releases\stability-report-$Version.json"
 $reportChecksumPath = "$reportPath.sha256.txt"
+Add-Type -Path (Join-Path $projectRoot 'src/Piko.Context/bin/Release/net8.0/Piko.Context.dll')
+Add-Type -Path (Join-Path $projectRoot 'src/Piko.Runtime.Client/bin/Release/net8.0-windows/Piko.Runtime.Client.dll')
+$healthClient = [Piko.Runtime.Ipc.RuntimeIpcClient]::new($pipeName, [TimeSpan]::FromSeconds(2))
 
 function Start-HiddenProcess {
     param(
@@ -117,6 +120,13 @@ try {
                 $heartbeatAge -lt 4
         }
 
+        $ipcHealthy = $false
+        try {
+            $ipcStatus = $healthClient.GetHealthAsync([Threading.CancellationToken]::None).GetAwaiter().GetResult()
+            $ipcHealthy = $ipcStatus.Health -eq 'healthy' -and $ipcStatus.ProcessId -eq $runtime.Id
+        } catch { $ipcHealthy = $false }
+        $runtimeHealthy = $runtimeHealthy -and $ipcHealthy
+
         $samples.Add([pscustomobject][ordered]@{
             at = $now.ToString('O')
             runtimeWorkingSetMb = [Math]::Round($runtime.WorkingSet64 / 1MB, 2)
@@ -126,6 +136,7 @@ try {
             runtimeHandles = $runtime.HandleCount
             desktopHandles = $desktop.HandleCount
             runtimeHealthy = $runtimeHealthy
+            ipcHealthy = $ipcHealthy
             heartbeatAgeSeconds = if ($null -eq $heartbeatAge) { $null } else { [Math]::Round($heartbeatAge, 3) }
         })
 
@@ -146,6 +157,7 @@ try {
     $summary = [ordered]@{
         schemaVersion = 1
         version = $Version
+        sourceCommit = $env:GITHUB_SHA
         startedAt = $startedAt.ToString('O')
         durationSeconds = $DurationSeconds
         sampleCount = $samples.Count
@@ -188,6 +200,18 @@ try {
 
     Write-Output "Stability PASS: $reportPath"
     $summary | ConvertTo-Json -Depth 3
+} catch {
+    if (-not (Test-Path -LiteralPath $reportPath)) {
+        [ordered]@{
+            passed = $false
+            version = $Version
+            sourceCommit = $env:GITHUB_SHA
+            error = $_.Exception.Message
+            elapsedSeconds = ([DateTimeOffset]::UtcNow - $startedAt).TotalSeconds
+            samples = $samples
+        } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding utf8
+    }
+    throw
 } finally {
     foreach ($process in @($runtime, $desktop)) {
         if ($null -ne $process) {

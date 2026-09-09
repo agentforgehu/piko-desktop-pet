@@ -43,6 +43,9 @@ public sealed record RuntimeUserSettings
 
     public RuntimeUserSettings Validate()
     {
+        if (SchemaVersion != CurrentSchemaVersion || !Enum.IsDefined(ProviderMode) ||
+            !Enum.IsDefined(UserAddressMode) || !Enum.IsDefined(Proactivity))
+            throw new ArgumentException("Unsupported settings version or option.");
         ValidateEndpoint(AiEndpoint, nameof(AiEndpoint), requireLoopback: false);
         ValidateEndpoint(LocalAiEndpoint, nameof(LocalAiEndpoint), requireLoopback: true);
         ValidateModel(AiModel, nameof(AiModel));

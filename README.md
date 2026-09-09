@@ -2,12 +2,15 @@
 
 Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是悬浮聊天按钮，而是把真实窗口、屏幕边缘、鼠标、文件活动和已授权的开发事件当作生活环境。
 
-当前开发目标：`0.2.5` 可靠互动预览版；合并并通过发布流水线后才会生成对应安装包。正式 `1.0` 仍在生产收口阶段。
+当前开发目标：`1.0.0` 正式版候选；候选 PR 验证流水线生成可下载的测试包。正式 `1.0` 仍在生产收口阶段。
 
-本轮范围、验收步骤和后续优先级见 [0.2.5 阶段计划](docs/NEXT_STAGE_0.2.5.md)。
+本轮范围、验收步骤和后续优先级见 [1.0.0 交付与验收](docs/RELEASE_1.0_READINESS.md)。
 
 ## 已实现
 
+- 首次使用引导，旧版本升级保留偏好；
+- 日常陪伴、感知与隐私、模型连接、称呼与性格四区设置；
+- 小屏窗口尺寸约束、对话与计划滚动、WPF 画面导出验证；
 - 原创矢量占位形象、透明无边框置顶窗口；
 - 单击进入连续对话、拖拽放下、双击设置、右键菜单；
 - 对话支持等待状态、停止、保留问题重试、新对话和逐项确认只读计划；
@@ -39,7 +42,7 @@ Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是
 
 从 [GitHub Releases](https://github.com/agentforgehu/piko-desktop-pet/releases) 选择已发布版本，下载安装器 `Piko-<版本>-Setup.exe` 或便携包 `Piko-<版本>-win-x64.zip`。预览功能请选择对应 Pre-release；发布包自带运行时，不需要安装 .NET。
 
-`0.2.5` 是未签名的 Pre-release，可使用 `scripts/publish.ps1` 生成单文件当前用户安装器、自包含便携包、更新清单和 VS Code 扩展。版本由 `release-version.txt` 单点驱动；文档、安装器和扩展不同步时发布会失败。正式 `1.0` 的发布脚本默认拒绝生成未签名稳定版。
+`1.0.0` 当前是尚未正式发布的候选版，可使用 `scripts/publish.ps1 -Channel preview` 生成单文件当前用户安装器、自包含便携包、更新清单和 VS Code 扩展。版本由 `release-version.txt` 单点驱动；文档、安装器和扩展不同步时发布会失败。正式 `1.0` 的发布脚本默认拒绝生成未签名稳定版。
 
 常用操作：
 
@@ -60,7 +63,7 @@ Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是
 ```powershell
 .\scripts\verify.ps1
 .\scripts\run-piko.ps1
-.\scripts\publish.ps1
+.\scripts\publish.ps1 -Channel preview
 .\scripts\stability.ps1 -DurationSeconds 1800
 ```
 

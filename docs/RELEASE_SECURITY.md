@@ -25,7 +25,7 @@ Setup 安装到 `%LOCALAPPDATA%\Programs\PikoDesktopPet`。新 payload 先解压
   -SigningCertificateThumbprint '<CURRENT_USER_MY_CERT_SHA1>'
 ```
 
-脚本对 Desktop、Runtime 和 Setup 使用 SHA-256 Authenticode 和 RFC 3161 时间戳，并在打包后调用 `signtool verify /pa`。没有证书时 Alpha 可以生成；稳定 semver 会直接失败。`-AllowUnsignedStable` 只用于非生产测试，生成的清单不会允许自动安装。
+脚本对 Desktop、Runtime 和 Setup 使用 SHA-256 Authenticode 和 RFC 3161 时间戳，并在打包后调用 `signtool verify /pa`。没有证书时 Alpha 可以生成；稳定 semver 会直接失败。候选版使用 `-Channel preview`，生成的清单不会允许自动安装。
 
 拿到正式证书后还必须把发布者证书指纹写入 `TrustedUpdateSigners.Thumbprints` 并重新构建。更新器只有同时满足以下条件才执行：
 
@@ -46,3 +46,11 @@ Setup 安装到 `%LOCALAPPDATA%\Programs\PikoDesktopPet`。新 payload 先解压
 - 最终角色美术、图标和音频授权材料（当前原创矢量占位可继续使用）；
 - 正式 RC 至少 30 分钟本机长稳报告，推荐另做 8 小时夜间 soak。
 
+
+## GitHub Actions 签名接入
+
+Release 工作流在稳定版打包之前运行 `scripts/check-release-ready.ps1`。当前 `release-approval.json` 明确为未批准；只有已完成的发布者与实机验收才能改为通过。
+
+现有 CI 支持把生产代码签名 PFX 存入仓库 Actions secret `PIKO_SIGNING_PFX_BASE64`，密码存入 `PIKO_SIGNING_PFX_PASSWORD`。不要在聊天、仓库文件或日志中提供证书私钥或密码。CI 在临时 runner 的当前用户证书库导入证书，核对指纹白名单，签名与验签后清理。仅可使用组织允许导出的生产证书；使用硬件密钥或 Azure Trusted Signing 时需接入相应签名提供方，此路径当前尚未实现。
+
+签名不能代替身份、隐私和交互验收。工作流不会自动填写发布批准结果。

@@ -22,6 +22,7 @@ public partial class AgentWindow : Window
         Action<RuntimeAgentPlanResponse>? onPetResponse = null, Action? openSettings = null)
     {
         InitializeComponent();
+        WindowSizing.FitToWorkArea(this);
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _onPetResponse = onPetResponse;
@@ -241,6 +242,7 @@ public partial class AgentWindow : Window
     {
         PlanList.ItemsSource = _proposals.ToArray();
         PlanPanel.Visibility = _proposals.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (_proposals.Count > 0) InteractionScroll.ScrollToEnd();
         UpdateExecuteButton();
     }
 

@@ -11,6 +11,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow(PikoSettings settings)
     {
         InitializeComponent();
+        WindowSizing.FitToWorkArea(this);
         _original = settings;
         AutonomousCheck.IsChecked = settings.AutonomousBehaviorEnabled;
         WindowCheck.IsChecked = settings.WindowExplorationEnabled;
