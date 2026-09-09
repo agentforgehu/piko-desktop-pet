@@ -6,6 +6,9 @@ using System.Windows.Media.Imaging;
 using Piko.Runtime.Ipc;
 using Size = System.Windows.Size;
 using Rect = System.Windows.Rect;
+using Button = System.Windows.Controls.Button;
+using TextBox = System.Windows.Controls.TextBox;
+using TabControl = System.Windows.Controls.TabControl;
 
 namespace Piko.Desktop.Services;
 

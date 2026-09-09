@@ -27,7 +27,9 @@ public sealed class SettingsStore
                 ? JsonSerializer.Deserialize<PikoSettings>(File.ReadAllText(_paths.SettingsFile), JsonOptions)
                   ?? new PikoSettings()
                 : new PikoSettings();
-            return settings.UpgradeOrDefault();
+            settings = settings.UpgradeOrDefault();
+            settings.ToRuntimeUserSettings().Validate();
+            return settings;
         }
         catch
         {

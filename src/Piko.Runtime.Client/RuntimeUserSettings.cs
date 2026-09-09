@@ -123,7 +123,7 @@ public sealed record RuntimeUserSettings
 
     private static void ValidateText(string value, int maximumLength, string parameterName, bool required = false)
     {
-        if ((required && string.IsNullOrWhiteSpace(value)) || value.Length > maximumLength || value.Any(char.IsControl))
+        if (value is null || (required && string.IsNullOrWhiteSpace(value)) || value.Length > maximumLength || value.Any(char.IsControl))
         {
             throw new ArgumentException("Pet profile text is invalid.", parameterName);
         }

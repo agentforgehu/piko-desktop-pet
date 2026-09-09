@@ -49,4 +49,20 @@ public sealed class ReleaseReadinessTests
         Assert.Throws<ArgumentException>(() => new RuntimeUserSettings { Proactivity = (PetProactivity)999 }.Validate());
         Assert.Throws<ArgumentException>(() => new RuntimeUserSettings { UserAddressMode = (UserAddressMode)999 }.Validate());
     }
+    [Theory]
+    [InlineData("{\"schemaVersion\":4,\"providerMode\":999}", "{\"schemaVersion\":2,\"providerMode\":999}")]
+    [InlineData("{\"schemaVersion\":4,\"personality\":null}", "{\"schemaVersion\":2,\"personality\":null}")]
+    public void InvalidPersistedSettingsRecoverWithoutBreakingStartup(string desktopJson, string runtimeJson)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "piko-settings-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var paths = new AppPaths(directory);
+            File.WriteAllText(paths.SettingsFile, desktopJson);
+            File.WriteAllText(paths.RuntimeSettingsFile, runtimeJson);
+            Assert.Equal(new PikoSettings(), new SettingsStore(paths).Load());
+            Assert.Equal(new RuntimeUserSettings(), RuntimeUserSettingsFile.Load(paths.RuntimeSettingsFile));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+    }
 }

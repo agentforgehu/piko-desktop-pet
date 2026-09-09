@@ -13,6 +13,8 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\Piko.Desktop\Services\SettingsStore.cs" Link="Desktop\SettingsStore.cs" />
+    <Compile Include="..\..\src\Piko.Desktop\Services\AppPaths.cs" Link="Desktop\AppPaths.cs" />
     <Compile Include="..\..\src\Piko.Desktop\Services\PikoSettings.cs" Link="Desktop\PikoSettings.cs" />
     <ProjectReference Include="..\..\src\Piko.Runtime\Piko.Runtime.csproj" />
     <ProjectReference Include="..\..\src\Piko.Runtime.Client\Piko.Runtime.Client.csproj" />
