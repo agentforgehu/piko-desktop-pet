@@ -11,6 +11,13 @@ $registryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\PikoD
 if ((Test-Path $installRoot) -or (Test-Path $userData) -or (Test-Path $registryPath)) {
     throw 'Refusing to modify an existing Piko installation or data.'
 }
+Add-Type -Path (Join-Path $projectRoot 'src/Piko.Context/bin/Release/net8.0/Piko.Context.dll')
+Add-Type -Path (Join-Path $projectRoot 'src/Piko.Runtime.Client/bin/Release/net8.0-windows/Piko.Runtime.Client.dll')
+$credentials = [Piko.Runtime.Security.WindowsCredentialStore]::new()
+$secretTargets = @([Piko.Runtime.Security.RuntimeSecretNames]::OpenAiApiKey, [Piko.Runtime.Security.RuntimeSecretNames]::MemoryEncryptionKey)
+foreach ($target in $secretTargets) {
+    if ($null -ne $credentials.Read($target)) { throw 'Refusing to modify existing Piko credentials.' }
+}
 $reportPath = Join-Path $projectRoot 'releases/installation-report.json'
 $steps = [Collections.Generic.List[string]]::new()
 $active = $null
@@ -50,6 +57,13 @@ try {
     Invoke-Setup @('--uninstall-worker', '--silent', '--purge-data')
     if ((Test-Path $installRoot) -or (Test-Path $registryPath) -or (Test-Path $userData)) { throw 'Purge uninstall left managed data' }
     $steps.Add('reinstall-and-purge')
+    # Regression: removing the data folder first must not leave Credential Manager entries behind.
+    foreach ($target in $secretTargets) { $credentials.Save($target, 'piko-disposable-ci-sentinel') }
+    Invoke-Setup @('--uninstall-worker', '--silent', '--purge-data')
+    foreach ($target in $secretTargets) {
+        if ($null -ne $credentials.Read($target)) { throw 'Purge left credentials when the data folder was absent' }
+    }
+    $steps.Add('purge-credentials-without-data-folder')
     [ordered]@{ passed = $true; version = $version; sourceCommit = $env:GITHUB_SHA; steps = $steps } |
         ConvertTo-Json -Depth 4 | Set-Content $reportPath -Encoding utf8
 } catch {
@@ -57,6 +71,7 @@ try {
         ConvertTo-Json -Depth 4 | Set-Content $reportPath -Encoding utf8
     throw
 } finally {
+    foreach ($target in $secretTargets) { $credentials.Delete($target) }
     if ($null -ne $active) {
         try { if (-not $active.HasExited) { $active.Kill($true) } } finally { $active.Dispose() }
     }

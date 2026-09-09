@@ -56,7 +56,7 @@ internal static class UiSmokeTest
             var content = (FrameworkElement)window.Content;
             var controls = requiredControls.Select(key => (FrameworkElement)window.FindName(key)).ToArray();
             window.Content = null;
-            var frame = new Border { Background = window.Background, Child = content };
+            var frame = new Border { Background = window.Background, Resources = window.Resources, Child = content };
             TextElement.SetFontFamily(frame, window.FontFamily);
             TextElement.SetFontSize(frame, window.FontSize);
             TextElement.SetForeground(frame, window.Foreground);
