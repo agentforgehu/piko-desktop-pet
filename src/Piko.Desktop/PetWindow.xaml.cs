@@ -513,7 +513,7 @@ public partial class PetWindow : Window
                     _settings.ShowMessages);
                 _logger.Info($"Model expression accepted (emotion={result.Emotion}, action={result.Action})");
             });
-        })
+        }, OpenSettings)
         {
             Owner = this
         };

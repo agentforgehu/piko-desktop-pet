@@ -1,4 +1,6 @@
-# Piko Desktop Pet MVP 执行计划
+# Piko Desktop Pet 执行计划
+
+当前推进：**0.2.5 可靠互动预览版**。见 [阶段计划与验收](NEXT_STAGE_0.2.5.md)。下表是 0.1.0 历史交付记录，不代表后续版本的验证结果。
 
 状态：`DONE` 已验证；`ACTIVE` 正在执行；`NEXT` 下一步。
 

@@ -1,6 +1,8 @@
 # Piko 1.0 生产差距与证据矩阵
 
-当前预览版本：0.2.4
+当前开发目标：0.2.5（待发布）
+
+本轮重新发现：0.2.4 的 700ms 客户端超时与串行 IPC 会使慢模型请求失败并阻塞健康检查。历史 DONE 仅代表当时证据，不等于已通过真实延迟和人工体验验收。0.2.5 修复与退出条件见 [阶段计划](NEXT_STAGE_0.2.5.md)。
 
 状态：`DONE` 有当前代码/运行证据；`ACTIVE` 正在实现；`PLANNED` 尚无充分证据；`EXTERNAL` 需要发布者材料。
 
@@ -14,7 +16,7 @@
 | Intervention Policy | 输入抑制、失败阈值、勿扰、冷却、每小时预算和直接请求测试 | DONE |
 | Piko.Runtime 后台宿主 | 用户态独立进程、线程无关单实例门、原子心跳、桌面端自动启动、1 秒健康/干预同步、监督重启和退出协议 | DONE |
 | 受保护本地 IPC | CurrentUserOnly 命名管道、health schema v2、请求关联、大小/超时上限、Context/Agent/Memory typed endpoints 和真实生命周期测试 | DONE |
-| PetMind 闭环 | Runtime 干预序列、情绪衰减、人格约束、模型文字/情绪/动作白名单、桌面与 ESP32 表达投影 | DONE（0.2.4 可测试闭环） |
+| PetMind 闭环 | Runtime 干预序列、情绪衰减、人格约束、模型文字/情绪/动作白名单、桌面与 ESP32 表达投影 | DONE（0.2.5 可测试闭环） |
 | Windows Context Sensors | idle/active/lock、前台应用类别、全屏、电源/电池、内存健康；仅在安全事实变化时发事件 | DONE |
 | VS Code Bridge | 诊断计数、构建/测试结果与时长、Git 计数；严格脱敏、Runtime 权限闸门、可安装 VSIX | DONE |
 | Git 感知 | 无 shell 的只读 porcelain v2 摘要，剥离路径并限制输出 | DONE |
@@ -26,9 +28,9 @@
 | 代码签名 | 需要证书或 Trusted Signing | EXTERNAL |
 | 生产美术/音频 | 当前原创矢量占位形象可运行 | EXTERNAL |
 | 性能与稳定性 | 全量自动化、真实进程 smoke、隔离长稳和 CI 资源预算；60 秒 Alpha 证据：Runtime 70.11 MB、Desktop 259.87 MB、29 次心跳全健康 | DONE（正式 RC 需 30 分钟报告） |
-| 1.0 Release | 当前公开稳定版为 0.1.0；0.2.4 作为模型可测试预览版，正式 1.0 仍需完成外部门禁 | ACTIVE |
+| 1.0 Release | 当前公开稳定版为 0.1.0；0.2.5 作为模型可测试预览版，正式 1.0 仍需完成外部门禁 | ACTIVE |
 
-## 当前验证基线
+## 历史验证基线（0.2.4 及以前；本轮以 CI 为准）
 
 - Release 构建：0 警告、0 错误；
 - World/PetMind 测试：22/22；
@@ -42,5 +44,5 @@
 - VS Code 扩展通过严格 TypeScript 检查、编译和 VSIX 打包；
 - Desktop 与 Runtime 均有真实进程 smoke，Runtime 心跳 JSON 通过 schema/healthy 门禁；
 - 默认无云端请求；
-- 0.2.4 预览版已具备模型连接测试、可见健康状态、宠物表达闭环并可安装使用；正式 1.0 尚未达到代码签名、30 分钟 RC 长稳和真实 AI 账号验收门禁。
+- 0.2.4 历史预览版已具备模型连接测试、可见健康状态、宠物表达闭环并可安装使用；正式 1.0 尚未达到代码签名、30 分钟 RC 长稳和真实 AI 账号验收门禁。
 
