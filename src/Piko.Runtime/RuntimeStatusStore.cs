@@ -25,13 +25,24 @@ public sealed class RuntimeStatusStore
         File.Move(temporary, _path, true);
     }
 
+    // The disk snapshot is diagnostic; a reader holding it open must not stop IPC or the host.
+    public bool TrySave(RuntimeStatusSnapshot status)
+    {
+        try { Save(status); return true; }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false; // The next heartbeat retries with the latest in-memory snapshot.
+        }
+    }
+
     public RuntimeStatusSnapshot? Load()
     {
         try
         {
-            return File.Exists(_path)
-                ? JsonSerializer.Deserialize<RuntimeStatusSnapshot>(File.ReadAllText(_path), JsonOptions)
-                : null;
+            if (!File.Exists(_path)) return null;
+            using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            return JsonSerializer.Deserialize<RuntimeStatusSnapshot>(stream, JsonOptions);
         }
         catch
         {

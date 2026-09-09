@@ -207,6 +207,9 @@ try {
             version = $Version
             sourceCommit = $env:GITHUB_SHA
             error = $_.Exception.Message
+            runtimeFailure = if (Test-Path (Join-Path $runtimeData 'runtime-failure.json')) {
+                Get-Content (Join-Path $runtimeData 'runtime-failure.json') -Raw | ConvertFrom-Json
+            } else { $null }
             elapsedSeconds = ([DateTimeOffset]::UtcNow - $startedAt).TotalSeconds
             samples = $samples
         } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding utf8

@@ -105,7 +105,7 @@ public sealed class PikoRuntimeHost
                 ? "disabled"
                 : "not_tested"
         };
-        statusStore.Save(status);
+        statusStore.TrySave(status);
         var statusGate = new object();
         void UpdateStatus(Func<RuntimeStatusSnapshot, RuntimeStatusSnapshot> update)
         {
@@ -497,7 +497,7 @@ public sealed class PikoRuntimeHost
                     AgentReadEnabled = runtimeSettings.AgentReadEnabled,
                     ProviderMode = providerMode
                 });
-                statusStore.Save(Volatile.Read(ref status));
+                statusStore.TrySave(Volatile.Read(ref status));
                 await Task.Delay(TimeSpan.FromSeconds(1), runtimeToken).ConfigureAwait(false);
             }
         }

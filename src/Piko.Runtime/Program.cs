@@ -1,4 +1,5 @@
 using System.Threading;
+using System.Text.Json;
 using Piko.Runtime.Ipc;
 
 namespace Piko.Runtime;
@@ -76,12 +77,14 @@ internal static class Program
         Console.CancelKeyPress += cancelHandler;
         AppDomain.CurrentDomain.ProcessExit += processExitHandler;
 
+        RuntimePaths? paths = null;
         try
         {
             var pipeName = options.PipeName ?? (isolatedTest
                 ? $"PikoDesktopPet.Runtime.Test.{Environment.ProcessId}"
                 : null);
-            var host = new PikoRuntimeHost(new RuntimePaths(options.DataDirectory), pipeName: pipeName);
+            paths = new RuntimePaths(options.DataDirectory);
+            var host = new PikoRuntimeHost(paths, pipeName: pipeName);
             await host.RunAsync(shutdown.Token).ConfigureAwait(false);
             return 0;
         }
@@ -89,8 +92,23 @@ internal static class Program
         {
             return 0;
         }
-        catch
+        catch (Exception exception)
         {
+            // Keep diagnostics useful without recording exception messages that may contain user paths.
+            if (paths is not null)
+            {
+                try
+                {
+                    File.WriteAllText(Path.Combine(paths.Root, "runtime-failure.json"), JsonSerializer.Serialize(new
+                    {
+                        at = DateTimeOffset.UtcNow,
+                        errorType = exception.GetType().FullName,
+                        hResult = exception.HResult,
+                        operation = exception.TargetSite?.DeclaringType?.FullName + "." + exception.TargetSite?.Name
+                    }));
+                }
+                catch { /* Failure reporting must not hide the original exit code. */ }
+            }
             return 1;
         }
         finally
