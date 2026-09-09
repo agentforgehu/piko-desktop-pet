@@ -51,10 +51,12 @@ public sealed class AgentConversationHistoryTests
         await Assert.ThrowsAsync<InvalidDataException>(() => RuntimeIpcTransport.ReadLineAsync(reader, limit, default));
     }
 
-    [Fact]
-    public async Task TransportAcceptsAnExactLimitFrame()
+    [Theory]
+    [InlineData("abcd\n")]
+    [InlineData("abcd\r\n")]
+    public async Task TransportAcceptsAnExactLimitFrame(string frame)
     {
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("abcd\n"));
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(frame));
         using var reader = new StreamReader(stream);
         Assert.Equal("abcd", await RuntimeIpcTransport.ReadLineAsync(reader, 4, default));
     }

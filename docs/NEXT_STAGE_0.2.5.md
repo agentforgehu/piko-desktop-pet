@@ -44,6 +44,12 @@ PR 必须通过现有全量 .NET 测试和 VS Code 检查/编译/打包；新增
 
 CI 新增版本同步门禁、Desktop 与 Runtime 进程 smoke、TRX 测试证据上传。该 smoke 证明启动与正常退出，不等同于人工视觉验收。
 
+### 已取得的本轮证据
+
+2026-09-09，初轮提交 `ec44972b0b51ad39fca3fe451f4752c4fd9d8f8a` 的 [Windows CI #18](https://github.com/agentforgehu/piko-desktop-pet/actions/runs/34293393191) 全部通过：Release 构建 0 警告 / 0 错误，115/115 测试，Desktop/Runtime smoke、版本同步及 VS Code 检查/编译/打包成功。TRX 已作为 CI artifact 上传。
+
+复查补充了达到帧长度上限时 Windows CRLF 结束符的处理与回归用例。最终提交的验证结果以 [PR #4 Checks](https://github.com/agentforgehu/piko-desktop-pet/pull/4/checks) 为准；上述 115 项是初轮实际记录，不冒充后续提交结果。
+
 ## Windows 人工验收（尚未执行，发布前必须记录结果）
 
 | 场景 | 操作 | 通过标准 |

@@ -25,7 +25,7 @@ public static class RuntimeIpcTransport
                 if (line.Length > 0 && line[^1] == '\r') line.Length--;
                 return line.ToString();
             }
-            if (line.Length >= maximumCharacters)
+            if (line.Length >= maximumCharacters && !(line.Length == maximumCharacters && character[0] == '\r'))
                 throw new InvalidDataException("runtime_frame_too_large");
             line.Append(character[0]);
         }
