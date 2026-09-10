@@ -253,6 +253,13 @@ try {
 
     Copy-Item -LiteralPath 'docs\USER_GUIDE_ZH.md' -Destination (Join-Path $publishDirectory '使用说明.md')
     Copy-Item -LiteralPath 'LICENSE' -Destination (Join-Path $publishDirectory 'LICENSE.txt')
+    Copy-Item -LiteralPath 'docs\PRIVACY.md' -Destination (Join-Path $publishDirectory '隐私说明.md')
+    if ($releaseChannel -eq 'preview') {
+        Set-Content -LiteralPath (Join-Path $publishDirectory 'PREVIEW-CANDIDATE.txt') -Encoding utf8 -Value @'
+This is a preview candidate for testing, not an approved stable release.
+Verify the GitHub release channel and checksums before use.
+'@
+    }
 
     $desktopExecutable = Join-Path $publishDirectory 'Piko.exe'
     $runtimeExecutable = Join-Path $publishDirectory 'Piko.Runtime.exe'

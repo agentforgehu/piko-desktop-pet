@@ -7,7 +7,6 @@ namespace Piko.Runtime.Ipc;
 public sealed class RuntimeIpcClient
 {
     public const string DefaultPipeName = "PikoDesktopPet.Runtime.v1";
-    private const int MaximumResponseCharacters = 65_536;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -165,9 +164,23 @@ public sealed class RuntimeIpcClient
         return count;
     }
 
-    public async Task<RuntimeResponse> SendAsync(
+    public Task<RuntimeResponse> SendAsync(
         RuntimeRequest request,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var responseTimeout = request.Type switch
+        {
+            "agent.plan" => RuntimeIpcTransport.PlanTimeout,
+            "agent.execute-read" => RuntimeIpcTransport.ExecutionTimeout,
+            "memory.list" or "memory.delete-all" => TimeSpan.FromSeconds(10),
+            _ => _timeout
+        };
+        return SendCoreAsync(request, responseTimeout, cancellationToken);
+    }
+
+    private async Task<RuntimeResponse> SendCoreAsync(
+        RuntimeRequest request, TimeSpan responseTimeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.SchemaVersion != RuntimeRequest.CurrentSchemaVersion ||
@@ -179,24 +192,30 @@ public sealed class RuntimeIpcClient
             throw new ArgumentException("Invalid runtime request.", nameof(request));
         }
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_timeout);
+        var serialized = JsonSerializer.Serialize(request, JsonOptions);
+        if (serialized.Length > RuntimeIpcTransport.MaximumRequestCharacters)
+            throw new ArgumentException("Runtime request exceeds the frame limit.", nameof(request));
+        using var connectionDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        connectionDeadline.CancelAfter(_timeout);
         await using var pipe = new NamedPipeClientStream(
             ".",
             _pipeName,
             PipeDirection.InOut,
             PipeOptions.Asynchronous);
-        await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
+        await pipe.ConnectAsync(connectionDeadline.Token).ConfigureAwait(false);
+        using var responseDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        responseDeadline.CancelAfter(responseTimeout);
 
         using var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, true);
         using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, true)
         {
             AutoFlush = true
         };
-        await writer.WriteLineAsync(JsonSerializer.Serialize(request, JsonOptions))
+        await writer.WriteLineAsync(serialized.AsMemory(), responseDeadline.Token)
             .ConfigureAwait(false);
-        var line = await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(line) || line.Length > MaximumResponseCharacters)
+        var line = await RuntimeIpcTransport.ReadLineAsync(
+            reader, RuntimeIpcTransport.MaximumResponseCharacters, responseDeadline.Token).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(line))
         {
             throw new InvalidDataException("invalid_runtime_response_size");
         }

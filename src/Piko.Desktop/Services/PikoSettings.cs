@@ -4,9 +4,10 @@ namespace Piko.Desktop.Services;
 
 public sealed record PikoSettings
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
+    public bool HasCompletedWelcome { get; init; }
     public bool AutonomousBehaviorEnabled { get; init; } = true;
     public bool WindowExplorationEnabled { get; init; } = true;
     public bool PointerAwarenessEnabled { get; init; } = true;
@@ -34,11 +35,12 @@ public sealed record PikoSettings
     public double? SavedFeetX { get; init; }
     public double? SavedFeetY { get; init; }
 
-    public PikoSettings UpgradeOrDefault() => SchemaVersion is 1 or 2 or CurrentSchemaVersion
+    public PikoSettings UpgradeOrDefault() => SchemaVersion is 1 or 2 or 3 or CurrentSchemaVersion
         ? this with
         {
             SchemaVersion = CurrentSchemaVersion,
-            ProviderMode = SchemaVersion < CurrentSchemaVersion && CloudAiEnabled
+            HasCompletedWelcome = SchemaVersion < CurrentSchemaVersion || HasCompletedWelcome,
+            ProviderMode = SchemaVersion < 3 && CloudAiEnabled
                 ? AiProviderMode.OpenAiApi
                 : ProviderMode
         }

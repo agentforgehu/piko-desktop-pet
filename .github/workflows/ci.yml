@@ -21,9 +21,29 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: integrations/vscode/package-lock.json
+      - name: Verify release version consistency
+        run: ./scripts/check-version-sync.ps1
       - run: dotnet restore Piko.sln
       - run: dotnet build Piko.sln -c Release --no-restore
-      - run: dotnet test Piko.sln -c Release --no-build
+      - run: dotnet test Piko.sln -c Release --no-build --logger trx --results-directory TestResults
+      - name: Desktop and Runtime smoke tests
+        shell: pwsh
+        run: |
+          $desktop = Join-Path $env:RUNNER_TEMP 'piko-desktop-smoke'
+          $runtime = Join-Path $env:RUNNER_TEMP 'piko-runtime-smoke'
+          dotnet src/Piko.Desktop/bin/Release/net8.0-windows/Piko.dll --smoke-test --data-dir $desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet src/Piko.Runtime/bin/Release/net8.0-windows/Piko.Runtime.dll --smoke-test --data-dir $runtime
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $status = Get-Content (Join-Path $runtime 'runtime-status.json') -Raw | ConvertFrom-Json
+          if ($status.schemaVersion -ne 2 -or $status.health -ne 'healthy') { throw 'Runtime smoke failed' }
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: piko-test-results
+          path: TestResults/*.trx
+          if-no-files-found: ignore
       - name: Verify VS Code bridge
         working-directory: integrations/vscode
         run: |

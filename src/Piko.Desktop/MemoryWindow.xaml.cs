@@ -5,12 +5,14 @@ namespace Piko.Desktop;
 
 public partial class MemoryWindow : Window
 {
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private readonly RuntimeProcessManager _runtime;
     private readonly AppLogger _logger;
 
     public MemoryWindow(RuntimeProcessManager runtime, AppLogger logger)
     {
         InitializeComponent();
+        WindowSizing.FitToWorkArea(this);
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         Loaded += async (_, _) => await RefreshAsync();

@@ -105,7 +105,13 @@ public sealed class PikoRuntimeHost
                 ? "disabled"
                 : "not_tested"
         };
-        statusStore.Save(status);
+        statusStore.TrySave(status);
+        var statusGate = new object();
+        void UpdateStatus(Func<RuntimeStatusSnapshot, RuntimeStatusSnapshot> update)
+        {
+            lock (statusGate) { status = update(status); }
+        }
+        using var agentGate = new SemaphoreSlim(1, 1);
 
         using var agentHttpClient = new HttpClient();
         var providerMode = runtimeSettings.EffectiveAiProviderMode;
@@ -140,11 +146,11 @@ public sealed class PikoRuntimeHost
         var pendingAgentProposals = new ConcurrentDictionary<Guid, PendingAgentProposal>();
         var source = new WindowsContextEventSource(Guid.NewGuid().ToString("N"));
         var latestActivityCategory = ApplicationCategory.Unknown;
-        var ipc = new RuntimeIpcServer(async (request, requestCancellation) =>
+        async Task<RuntimeResponse> HandleRequestAsync(RuntimeRequest request, CancellationToken requestCancellation)
         {
             if (request.Type == "health.get")
             {
-                return RuntimeResponse.Ok(request.RequestId, "health", status);
+                return RuntimeResponse.Ok(request.RequestId, "health", Volatile.Read(ref status));
             }
 
             if (request.Type == "runtime.stop")
@@ -190,11 +196,8 @@ public sealed class PikoRuntimeHost
                     cancellationToken: requestCancellation).ConfigureAwait(false);
                 if (update.Accepted)
                 {
-                    status = ApplyAcceptedUpdate(
-                        status,
-                        update,
-                        contextEvent.Type,
-                        DateTimeOffset.UtcNow);
+                    UpdateStatus(current => ApplyAcceptedUpdate(
+                        current, update, contextEvent.Type, DateTimeOffset.UtcNow));
                     if (activeMemoryStore is not null &&
                         TryCreateMemoryDraft(contextEvent, out var draft))
                     {
@@ -208,7 +211,7 @@ public sealed class PikoRuntimeHost
                         catch
                         {
                             memoryHealth = "error";
-                            status = status with { MemoryHealth = memoryHealth };
+                            UpdateStatus(current => current with { MemoryHealth = memoryHealth });
                         }
                     }
                 }
@@ -281,12 +284,13 @@ public sealed class PikoRuntimeHost
                         runtimeSettings.Personality,
                         runtimeSettings.Proactivity.ToString().ToLowerInvariant()),
                     requestCancellation).ConfigureAwait(false);
-                status = status with
+                requestCancellation.ThrowIfCancellationRequested();
+                UpdateStatus(current => current with
                 {
                     ModelHealth = plan.Available ? "healthy" : "error",
                     ModelLastError = plan.Available ? "none" : plan.Reason,
                     ModelLastCheckedAt = DateTimeOffset.UtcNow
-                };
+                });
                 foreach (var expired in pendingAgentProposals.Where(item => item.Value.ExpiresAt <= DateTimeOffset.UtcNow))
                 {
                     pendingAgentProposals.TryRemove(expired.Key, out _);
@@ -449,6 +453,16 @@ public sealed class PikoRuntimeHost
             }
 
             return RuntimeResponse.Fail(request.RequestId, "unknown_request_type");
+        }
+        var ipc = new RuntimeIpcServer(async (request, requestCancellation) =>
+        {
+            if (request.Type is not ("agent.plan" or "agent.execute-read"))
+                return await HandleRequestAsync(request, requestCancellation).ConfigureAwait(false);
+            // Keep health/context/stop responsive and avoid accumulating paid model requests.
+            if (!await agentGate.WaitAsync(0, requestCancellation).ConfigureAwait(false))
+                return RuntimeResponse.Fail(request.RequestId, "agent_busy");
+            try { return await HandleRequestAsync(request, requestCancellation).ConfigureAwait(false); }
+            finally { agentGate.Release(); }
         }, _pipeName);
         var ipcTask = ipc.RunAsync(runtimeToken);
 
@@ -466,16 +480,13 @@ public sealed class PikoRuntimeHost
                         .ConfigureAwait(false);
                     if (update.Accepted)
                     {
-                        status = ApplyAcceptedUpdate(
-                            status,
-                            update,
-                            contextEvent.Type,
-                            DateTimeOffset.UtcNow);
+                        UpdateStatus(current => ApplyAcceptedUpdate(
+                            current, update, contextEvent.Type, DateTimeOffset.UtcNow));
                     }
                 }
 
                 var situation = engine.CurrentSituation;
-                status = status with
+                UpdateStatus(current => current with
                 {
                     LastHeartbeatAt = DateTimeOffset.UtcNow,
                     Health = "healthy",
@@ -485,8 +496,8 @@ public sealed class PikoRuntimeHost
                     CloudAiEnabled = providerMode == AiProviderMode.OpenAiApi,
                     AgentReadEnabled = runtimeSettings.AgentReadEnabled,
                     ProviderMode = providerMode
-                };
-                statusStore.Save(status);
+                });
+                statusStore.TrySave(Volatile.Read(ref status));
                 await Task.Delay(TimeSpan.FromSeconds(1), runtimeToken).ConfigureAwait(false);
             }
         }
@@ -496,6 +507,7 @@ public sealed class PikoRuntimeHost
         }
         finally
         {
+            shutdown.Cancel();
             try
             {
                 await ipcTask.ConfigureAwait(false);

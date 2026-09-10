@@ -100,7 +100,7 @@ internal static class InstallerOperations
             InstallerLayout.DeleteManagedDirectory(InstallerLayout.ApplicationDirectory);
         }
 
-        if (purgeData && Directory.Exists(InstallerLayout.UserDataDirectory))
+        if (purgeData)
         {
             var expected = Path.GetFullPath(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -113,7 +113,7 @@ internal static class InstallerOperations
                 throw new InvalidOperationException("Refusing to purge an unexpected data directory.");
             }
 
-            Directory.Delete(expected, recursive: true);
+            if (Directory.Exists(expected)) Directory.Delete(expected, recursive: true);
             var credentials = new WindowsCredentialStore();
             credentials.Delete(RuntimeSecretNames.OpenAiApiKey);
             credentials.Delete(RuntimeSecretNames.MemoryEncryptionKey);

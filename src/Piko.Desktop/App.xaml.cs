@@ -16,6 +16,20 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Contains("--ui-smoke-test", StringComparer.OrdinalIgnoreCase))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var directory = ReadArgumentValue(e.Args, "--data-dir")
+                ?? throw new ArgumentException("UI verification requires an explicit --data-dir.");
+            try { UiSmokeTest.Run(directory); Shutdown(0); }
+            catch (Exception exception)
+            {
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, "ui-error.txt"), exception.ToString());
+                Shutdown(1);
+            }
+            return;
+        }
 
         var smokeTest = e.Args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
         var stabilityTest = e.Args.Contains("--stability-test", StringComparer.OrdinalIgnoreCase);
@@ -43,6 +57,12 @@ public partial class App : System.Windows.Application
         var logger = new AppLogger(paths);
         var store = new SettingsStore(paths);
         var loaded = store.Load();
+        if (!isolatedTest && !loaded.HasCompletedWelcome)
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            if (new WelcomeWindow().ShowDialog() != true) { Shutdown(); return; }
+            loaded = loaded with { HasCompletedWelcome = true };
+        }
         var recoveredFromCrash = !loaded.LastExitWasClean;
         var settings = loaded with { LastExitWasClean = false };
         store.Save(settings);
@@ -52,6 +72,7 @@ public partial class App : System.Windows.Application
         {
             logger.Error("Unhandled UI exception", args.Exception);
             args.Handled = true;
+            if (isolatedTest) Shutdown(1);
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             logger.Error("Unhandled process exception", args.ExceptionObject as Exception);
@@ -69,6 +90,7 @@ public partial class App : System.Windows.Application
             new DeviceStatePublisher(paths),
             new RuntimeProcessManager(logger));
         MainWindow = _petWindow;
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
         _petWindow.Show();
         logger.Info(recoveredFromCrash
             ? "Piko started with crash recovery recall"
