@@ -21,7 +21,9 @@ public sealed class RuntimeStatusContentionTests
             using (var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 // Reproduce the Windows file-replacement sharing violation from external readers.
-                Assert.Throws<IOException>(() => store.Save(next));
+                var blockedWrite = Record.Exception(() => store.Save(next));
+                Assert.True(blockedWrite is IOException or UnauthorizedAccessException,
+                    $"Expected a Windows sharing/access failure, got {blockedWrite?.GetType().Name ?? "no exception"}.");
                 Assert.False(store.TrySave(next));
                 Assert.Equal(first, store.Load());
             }
