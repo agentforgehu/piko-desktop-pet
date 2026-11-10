@@ -188,7 +188,8 @@ public sealed class SqliteMemoryStore : IDisposable
         MemoryKind? kind = null,
         int limit = 100,
         CancellationToken cancellationToken = default,
-        DataSensitivity? maximumSensitivity = null)
+        DataSensitivity? maximumSensitivity = null,
+        bool includeSuperseded = true)
     {
         ThrowIfDisposed();
         if (limit is < 1 or > 500)
@@ -205,6 +206,7 @@ public sealed class SqliteMemoryStore : IDisposable
             WHERE (expires_at IS NULL OR expires_at > $now)
               AND ($kind IS NULL OR kind = $kind)
               AND ($maximumSensitivity IS NULL OR sensitivity <= $maximumSensitivity)
+              AND ($includeSuperseded = 1 OR superseded_by IS NULL)
             ORDER BY updated_at DESC
             LIMIT $limit;
             """;
@@ -213,6 +215,7 @@ public sealed class SqliteMemoryStore : IDisposable
         command.Parameters.AddWithValue("$maximumSensitivity", maximumSensitivity is null
             ? DBNull.Value
             : (int)maximumSensitivity.Value);
+        command.Parameters.AddWithValue("$includeSuperseded", includeSuperseded ? 1 : 0);
         command.Parameters.AddWithValue("$limit", limit);
         var records = new List<MemoryRecord>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -249,10 +252,10 @@ public sealed class SqliteMemoryStore : IDisposable
                 now,
                 limit: 500,
                 cancellationToken: cancellationToken,
-                maximumSensitivity: DataSensitivity.Low)
+                maximumSensitivity: DataSensitivity.Low,
+                includeSuperseded: false)
             .ConfigureAwait(false);
         return candidates
-            .Where(record => !record.IsSuperseded)
             .Where(record => record.Provenance != MemoryProvenance.Hypothetical)
             .Select(record => CreateActivation(query, queryTokens, record, now))
             .Where(hit => hit.Score >= 0.16)

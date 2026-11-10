@@ -83,9 +83,10 @@ public sealed class MemoryIpcTests
             profile = Assert.Single(profileVersions, item => !item.IsSuperseded);
             Assert.True(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
             Assert.False(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
-            var remaining = Assert.Single((await client.ListMemoriesAsync(timeout.Token)).Items);
-            Assert.Equal("Episodic", remaining.Kind);
-            Assert.Equal("构建失败 Build failed", remaining.Summary);
+            var remaining = (await client.ListMemoriesAsync(timeout.Token)).Items;
+            Assert.Equal(2, remaining.Count);
+            Assert.Contains(remaining, item => item.Kind == "Episodic" && item.Summary == "构建失败 Build failed");
+            Assert.Contains(remaining, item => item.Id == priorProfileId && item.IsSuperseded);
 
             Assert.Equal(2, await client.DeleteAllMemoriesAsync(timeout.Token));
             Assert.Empty((await client.ListMemoriesAsync(timeout.Token)).Items);
