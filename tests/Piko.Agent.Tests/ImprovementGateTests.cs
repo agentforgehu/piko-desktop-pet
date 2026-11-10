@@ -56,14 +56,13 @@ public sealed class ImprovementGateTests
     }
 
     [Theory]
-    [InlineData(ImprovementRisk.Low, 10, 5, false)]
-    [InlineData(ImprovementRisk.Medium, 30, 2, false)]
-    [InlineData(ImprovementRisk.High, 100, 0, false)]
+    [InlineData(ImprovementRisk.Low, 10, 5)]
+    [InlineData(ImprovementRisk.Medium, 30, 2)]
+    [InlineData(ImprovementRisk.High, 100, 0)]
     public void RiskLevelSetsMinimumEvidenceAndCapsCostGrowth(
         ImprovementRisk risk,
         int minimumHoldout,
-        double allowedCostPercent,
-        bool expectedEligible)
+        double allowedCostPercent)
     {
         var evaluation = ValidEvaluation() with
         {
@@ -76,8 +75,23 @@ public sealed class ImprovementGateTests
 
         var decision = ImprovementGate.Evaluate(evaluation);
 
-        Assert.Equal(expectedEligible, decision.EligibleForMaintainerReview);
+        Assert.True(decision.EligibleForMaintainerReview);
         Assert.DoesNotContain("holdout_evidence_insufficient", decision.Reasons);
+    }
+
+    [Fact]
+    public void MediumRiskCannotUseLowRiskCostAllowance()
+    {
+        var decision = ImprovementGate.Evaluate(ValidEvaluation() with
+        {
+            Risk = ImprovementRisk.Medium,
+            HoldoutScenarioCount = 50,
+            RequiredHoldoutScenarioCount = 30,
+            CandidateCost = 103
+        });
+
+        Assert.False(decision.EligibleForMaintainerReview);
+        Assert.Contains("cost_regression_exceeded", decision.Reasons);
     }
 
     [Fact]
