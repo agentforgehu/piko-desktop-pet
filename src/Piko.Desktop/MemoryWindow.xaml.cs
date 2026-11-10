@@ -5,7 +5,7 @@ namespace Piko.Desktop;
 
 public partial class MemoryWindow : Window
 {
-    private sealed record MemoryListItem(string Id, string Created, string Kind, string Sensitivity, string Provenance, string Summary);
+    private sealed record MemoryListItem(string Id, DateTimeOffset UpdatedAt, string Created, string Kind, string Sensitivity, string Provenance, string Summary);
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private readonly RuntimeProcessManager _runtime;
@@ -105,8 +105,8 @@ public partial class MemoryWindow : Window
 
         try
         {
-            var updated = await _runtime.UpdateMemoryAsync(selected.Id, kind, MemorySummaryText.Text.Trim());
-            StatusText.Text = updated ? "记忆已更新。" : "这条记忆已过期或不存在。";
+            var updated = await _runtime.UpdateMemoryAsync(selected.Id, selected.UpdatedAt, kind, MemorySummaryText.Text.Trim());
+            StatusText.Text = updated ? "记忆已更新。" : "这条记忆已被修改、过期或删除，请刷新后重试。";
             MemorySummaryText.Clear();
             await RefreshAsync();
         }
@@ -157,6 +157,7 @@ public partial class MemoryWindow : Window
 
             MemoryList.ItemsSource = result.Items.Select(item => new MemoryListItem(
                 item.Id,
+                item.UpdatedAt,
                 item.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
                 item.Kind,
                 item.Sensitivity,

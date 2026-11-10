@@ -478,6 +478,7 @@ public sealed class PikoRuntimeHost
                 }
 
                 if (memoryRequest is null || !Guid.TryParseExact(memoryRequest.Id, "N", out var memoryId) ||
+                    memoryRequest.ExpectedUpdatedAt == default ||
                     memoryRequest.Kind is not ("Profile" or "Semantic" or "Episodic") ||
                     string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240)
                 {
@@ -497,7 +498,12 @@ public sealed class PikoRuntimeHost
                     DataSensitivity.Low,
                     "user.confirmed",
                     Provenance: MemoryProvenance.UserConfirmed);
-                var updated = await activeMemoryStore.UpdateAsync(memoryId, draft, DateTimeOffset.UtcNow, requestCancellation)
+                var updated = await activeMemoryStore.UpdateAsync(
+                        memoryId,
+                        memoryRequest.ExpectedUpdatedAt,
+                        draft,
+                        DateTimeOffset.UtcNow,
+                        requestCancellation)
                     .ConfigureAwait(false);
                 return RuntimeResponse.Ok(request.RequestId, "memory.updated-one", new { updated });
             }
@@ -556,6 +562,7 @@ public sealed class PikoRuntimeHost
                             memory.Id.ToString("N"),
                             memory.Kind.ToString(),
                             memory.CreatedAt,
+                            memory.UpdatedAt,
                             memory.ExpiresAt,
                             memory.Sensitivity.ToString(),
                             memory.Summary,

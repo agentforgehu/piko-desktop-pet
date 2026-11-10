@@ -167,11 +167,13 @@ public sealed class RuntimeIpcClient
 
     public async Task<bool> UpdateMemoryAsync(
         string id,
+        DateTimeOffset expectedUpdatedAt,
         string kind,
         string summary,
         CancellationToken cancellationToken = default)
     {
         if (!Guid.TryParseExact(id, "N", out var memoryId) ||
+            expectedUpdatedAt == default ||
             kind is not ("Profile" or "Semantic" or "Episodic") ||
             string.IsNullOrWhiteSpace(summary) || summary.Length > 240)
         {
@@ -183,7 +185,7 @@ public sealed class RuntimeIpcClient
             Guid.NewGuid().ToString("N"),
             "memory.update",
             JsonSerializer.SerializeToElement(
-                new RuntimeMemoryUpdateRequest(memoryId.ToString("N"), kind, summary.Trim()), JsonOptions));
+                new RuntimeMemoryUpdateRequest(memoryId.ToString("N"), expectedUpdatedAt, kind, summary.Trim()), JsonOptions));
         var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
         if (!response.Success || response.Type != "memory.updated-one" || response.Payload is null ||
             !response.Payload.Value.TryGetProperty("updated", out var updated) ||

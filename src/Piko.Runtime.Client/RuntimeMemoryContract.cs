@@ -4,6 +4,7 @@ public sealed record RuntimeMemoryItem(
     string Id,
     string Kind,
     DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
     DateTimeOffset? ExpiresAt,
     string Sensitivity,
     string Summary,
@@ -15,5 +16,5 @@ public sealed record RuntimeMemoryListResponse(
     IReadOnlyList<RuntimeMemoryItem> Items);
 
 public sealed record RuntimeMemoryAddRequest(string Kind, string Summary);
-public sealed record RuntimeMemoryUpdateRequest(string Id, string Kind, string Summary);
+public sealed record RuntimeMemoryUpdateRequest(string Id, DateTimeOffset ExpectedUpdatedAt, string Kind, string Summary);
 public sealed record RuntimeMemoryDeleteRequest(string Id);

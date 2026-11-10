@@ -66,7 +66,10 @@ public sealed class MemoryIpcTests
             var profile = Assert.Single(memories.Items, item => item.Kind == "Profile");
             Assert.Equal("偏好使用简洁的中文回答", profile.Summary);
             Assert.Equal("UserConfirmed", profile.Provenance);
-            Assert.True(await client.UpdateMemoryAsync(profile.Id, "Profile", "偏好使用简体中文和简洁回答", timeout.Token));
+            Assert.True(await client.UpdateMemoryAsync(
+                profile.Id, profile.UpdatedAt, "Profile", "偏好使用简体中文和简洁回答", timeout.Token));
+            Assert.False(await client.UpdateMemoryAsync(
+                profile.Id, profile.UpdatedAt, "Profile", "过时编辑不应覆盖新值", timeout.Token));
             profile = Assert.Single((await client.ListMemoriesAsync(timeout.Token)).Items, item => item.Kind == "Profile");
             Assert.Equal("偏好使用简体中文和简洁回答", profile.Summary);
             Assert.True(await client.DeleteMemoryAsync(profile.Id, timeout.Token));

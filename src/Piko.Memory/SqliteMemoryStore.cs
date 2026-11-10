@@ -220,14 +220,20 @@ public sealed class SqliteMemoryStore : IDisposable
 
     public async Task<bool> UpdateAsync(
         Guid id,
+        DateTimeOffset expectedUpdatedAt,
         MemoryDraft draft,
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        if (expectedUpdatedAt == default)
+        {
+            throw new ArgumentException("An expected update timestamp is required.", nameof(expectedUpdatedAt));
+        }
         ValidateDraft(draft);
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         var expiresAt = draft.ExpiresAt ?? DefaultExpiry(draft.Kind, now);
+        var updatedAt = now > expectedUpdatedAt ? now : expectedUpdatedAt.AddTicks(1);
         var summary = _protector.Protect(draft.Summary, $"{id:N}:summary");
         var payload = _protector.Protect(draft.Payload, $"{id:N}:payload");
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -242,11 +248,13 @@ public sealed class SqliteMemoryStore : IDisposable
                 summary_cipher = $summary,
                 payload_cipher = $payload,
                 provenance = $provenance
-            WHERE id = $id AND (expires_at IS NULL OR expires_at > $now);
+            WHERE id = $id AND updated_at = $expectedUpdated
+              AND (expires_at IS NULL OR expires_at > $now);
             """;
         command.Parameters.AddWithValue("$id", id.ToString("N"));
+        command.Parameters.AddWithValue("$expectedUpdated", expectedUpdatedAt.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$kind", (int)draft.Kind);
-        command.Parameters.AddWithValue("$updated", now.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$updated", updatedAt.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$expires", expiresAt is null
             ? DBNull.Value
             : expiresAt.Value.ToString("O", CultureInfo.InvariantCulture));

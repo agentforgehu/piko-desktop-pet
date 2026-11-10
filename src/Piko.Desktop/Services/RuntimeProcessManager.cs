@@ -195,6 +195,7 @@ public sealed class RuntimeProcessManager
 
     public async Task<bool> UpdateMemoryAsync(
         string id,
+        DateTimeOffset expectedUpdatedAt,
         string kind,
         string summary,
         CancellationToken cancellationToken = default)
@@ -205,6 +206,6 @@ public sealed class RuntimeProcessManager
             throw new InvalidOperationException("runtime_unavailable");
         }
 
-        return await _client.UpdateMemoryAsync(id, kind, summary, cancellationToken).ConfigureAwait(false);
+        return await _client.UpdateMemoryAsync(id, expectedUpdatedAt, kind, summary, cancellationToken).ConfigureAwait(false);
     }
 }
