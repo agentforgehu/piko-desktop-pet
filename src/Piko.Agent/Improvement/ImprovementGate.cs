@@ -30,18 +30,29 @@ public sealed record ImprovementDecision(
 
 public static class ImprovementGate
 {
+    private static readonly IReadOnlyDictionary<ImprovementRisk, (int MinimumHoldout, double MaximumCostIncrease)> RiskBudgets =
+        new Dictionary<ImprovementRisk, (int, double)>
+        {
+            [ImprovementRisk.Low] = (10, 0.05),
+            [ImprovementRisk.Medium] = (30, 0.02),
+            [ImprovementRisk.High] = (100, 0.0)
+        };
+
     public static ImprovementDecision Evaluate(ImprovementEvaluation evaluation, double maximumCostIncrease = 0.05)
     {
         ArgumentNullException.ThrowIfNull(evaluation);
         var reasons = new List<string>();
         if (string.IsNullOrWhiteSpace(evaluation.CandidateId)) reasons.Add("candidate_id_missing");
         if (!Enum.IsDefined(evaluation.Risk)) reasons.Add("risk_level_invalid");
+        var riskBudget = RiskBudgets.TryGetValue(evaluation.Risk, out var configuredBudget)
+            ? configuredBudget
+            : (MinimumHoldout: int.MaxValue, MaximumCostIncrease: 0.0);
         if (!InUnitInterval(evaluation.BaselineQuality) || !InUnitInterval(evaluation.CandidateQuality))
             reasons.Add("quality_score_invalid");
         if (!double.IsFinite(evaluation.BaselineCost) || evaluation.BaselineCost < 0 ||
             !double.IsFinite(evaluation.CandidateCost) || evaluation.CandidateCost < 0)
             reasons.Add("cost_score_invalid");
-        if (evaluation.RequiredHoldoutScenarioCount < 10 ||
+        if (evaluation.RequiredHoldoutScenarioCount < riskBudget.MinimumHoldout ||
             evaluation.HoldoutScenarioCount < evaluation.RequiredHoldoutScenarioCount)
             reasons.Add("holdout_evidence_insufficient");
         if (!IsDigest(evaluation.EvidenceDigest)) reasons.Add("evidence_digest_invalid");
@@ -54,7 +65,8 @@ public static class ImprovementGate
             reasons.Add("cost_budget_invalid");
         else if ((evaluation.BaselineCost == 0 && evaluation.CandidateCost > 0) ||
                  (evaluation.BaselineCost > 0 &&
-                  evaluation.CandidateCost > evaluation.BaselineCost * (1 + maximumCostIncrease)))
+                  evaluation.CandidateCost > evaluation.BaselineCost *
+                  (1 + Math.Min(maximumCostIncrease, riskBudget.MaximumCostIncrease))))
             reasons.Add("cost_regression_exceeded");
 
         var eligible = reasons.Count == 0;
