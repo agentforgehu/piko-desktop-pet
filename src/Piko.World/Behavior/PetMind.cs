@@ -9,13 +9,22 @@ public enum PetStimulus
     RespondToUser
 }
 
-public readonly record struct PetEmotionState(
+public record struct PetEmotionState(
     double Valence,
     double Arousal,
     double Energy,
     double Attachment)
 {
-    public static PetEmotionState Baseline => new(0.18, 0.28, 0.72, 0.55);
+    public double StressLoad { get; init; }
+    public double CuriosityDrive { get; init; }
+    public double RewardExpectation { get; init; }
+
+    public static PetEmotionState Baseline => new(0.18, 0.28, 0.72, 0.55)
+    {
+        StressLoad = 0.12,
+        CuriosityDrive = 0.45,
+        RewardExpectation = 0.5
+    };
 }
 
 public sealed record PetAppraisalEvent(
@@ -26,7 +35,10 @@ public sealed record PetAppraisalEvent(
     double Certainty,
     double Controllability,
     double EnergyDelta = 0,
-    double RelationshipDelta = 0);
+    double RelationshipDelta = 0,
+    double Novelty = 0,
+    double GoalProgressDelta = 0,
+    double SocialSignal = 0);
 
 public sealed record PetEmotionTransition(
     PetAppraisalEvent Appraisal,
@@ -40,10 +52,13 @@ public sealed record PetPersonality(
 {
     public PetPersonality Validate() => this with
     {
-        Warmth = Math.Clamp(Warmth, 0, 1),
-        Playfulness = Math.Clamp(Playfulness, 0, 1),
-        Restraint = Math.Clamp(Restraint, 0, 1)
+        Warmth = ClampPersonality(Warmth),
+        Playfulness = ClampPersonality(Playfulness),
+        Restraint = ClampPersonality(Restraint)
     };
+
+    private static double ClampPersonality(double value) =>
+        double.IsFinite(value) ? Math.Clamp(value, 0, 1) : 0.5;
 }
 
 public sealed record PetReaction(
@@ -54,7 +69,7 @@ public sealed record PetReaction(
 
 public sealed class PetMind
 {
-    private readonly PetPersonality _personality;
+    private PetPersonality _personality;
 
     public PetMind(PetPersonality? personality = null)
     {
@@ -70,6 +85,9 @@ public sealed class PetMind
     /// </summary>
     public PetEmotionTransition? LastTransition { get; private set; }
 
+    public void SetPersonality(PetPersonality personality) =>
+        _personality = (personality ?? throw new ArgumentNullException(nameof(personality))).Validate();
+
     public PetEmotionState Appraise(PetAppraisalEvent appraisal)
     {
         ArgumentNullException.ThrowIfNull(appraisal);
@@ -77,32 +95,66 @@ public sealed class PetMind
         {
             Trigger = string.IsNullOrWhiteSpace(appraisal.Trigger)
                 ? "unspecified"
-                : appraisal.Trigger[..Math.Min(appraisal.Trigger.Length, 64)]
+                : appraisal.Trigger[..Math.Min(appraisal.Trigger.Length, 64)],
+            GoalRelevance = ClampFinite(appraisal.GoalRelevance, 0, 1),
+            OutcomeValence = ClampFinite(appraisal.OutcomeValence, -0.4, 0.4),
+            ArousalDelta = ClampFinite(appraisal.ArousalDelta, -0.4, 0.4),
+            Certainty = ClampFinite(appraisal.Certainty, 0, 1),
+            Controllability = ClampFinite(appraisal.Controllability, 0, 1),
+            EnergyDelta = ClampFinite(appraisal.EnergyDelta, -0.2, 0.2),
+            RelationshipDelta = ClampFinite(appraisal.RelationshipDelta, -0.01, 0.01),
+            Novelty = ClampFinite(appraisal.Novelty, 0, 1),
+            GoalProgressDelta = ClampFinite(appraisal.GoalProgressDelta, -1, 1),
+            SocialSignal = ClampFinite(appraisal.SocialSignal, -1, 1)
         };
         var relevance = ClampFinite(appraisal.GoalRelevance, 0, 1);
         var certainty = ClampFinite(appraisal.Certainty, 0, 1);
         var controllability = ClampFinite(appraisal.Controllability, 0, 1);
+        var outcome = ClampFinite(appraisal.OutcomeValence, -0.4, 0.4);
+        var arousalDelta = ClampFinite(appraisal.ArousalDelta, -0.4, 0.4);
+        var novelty = ClampFinite(appraisal.Novelty, 0, 1);
+        var progress = ClampFinite(appraisal.GoalProgressDelta, -1, 1);
+        var socialSignal = ClampFinite(appraisal.SocialSignal, -1, 1);
         var before = Emotion;
+        var uncertainty = 1 - certainty;
+        var stressRise = relevance * (
+            Math.Max(0, -outcome) * 0.18 + uncertainty * 0.12 +
+            (1 - controllability) * 0.1 + Math.Max(0, arousalDelta) * 0.04);
+        var stressRecovery = relevance * Math.Max(0, outcome) * 0.06 +
+                             Math.Max(0, socialSignal) * 0.025;
         var after = new PetEmotionState(
-            Math.Clamp(before.Valence + relevance * ClampFinite(appraisal.OutcomeValence, -0.4, 0.4), -1, 1),
-            Math.Clamp(before.Arousal + relevance * ClampFinite(appraisal.ArousalDelta, -0.4, 0.4) +
-                       relevance * (1 - certainty) * 0.12 + relevance * (1 - controllability) * 0.06, 0, 1),
-            Math.Clamp(before.Energy + ClampFinite(appraisal.EnergyDelta, -0.2, 0.2), 0, 1),
-            Math.Clamp(before.Attachment + ClampFinite(appraisal.RelationshipDelta, -0.01, 0.01), 0, 1));
+            Math.Clamp(before.Valence + relevance * outcome, -1, 1),
+            Math.Clamp(before.Arousal + relevance * arousalDelta +
+                       relevance * uncertainty * 0.12 + relevance * (1 - controllability) * 0.06, 0, 1),
+            Math.Clamp(before.Energy + ClampFinite(appraisal.EnergyDelta, -0.2, 0.2) -
+                       relevance * Math.Max(0, arousalDelta) * 0.01, 0, 1),
+            Math.Clamp(before.Attachment + ClampFinite(appraisal.RelationshipDelta, -0.01, 0.01), 0, 1))
+        {
+            StressLoad = Math.Clamp(before.StressLoad + stressRise - stressRecovery, 0, 1),
+            CuriosityDrive = Math.Clamp(before.CuriosityDrive + relevance * novelty * 0.18 -
+                                        relevance * uncertainty * before.StressLoad * 0.025, 0, 1),
+            RewardExpectation = Math.Clamp(before.RewardExpectation + relevance * progress * 0.16 +
+                                           relevance * outcome * 0.04, 0, 1)
+        };
         Emotion = after;
         LastTransition = new PetEmotionTransition(appraisal, before, after);
         return after;
     }
 
-    public PetEmotionState Advance(double elapsedSeconds)
+    public PetEmotionState Advance(double elapsedSeconds, bool resting = false)
     {
-        var dt = Math.Clamp(elapsedSeconds, 0, 1);
+        var dt = ClampFinite(elapsedSeconds, 0, 1);
         var baseline = PetEmotionState.Baseline;
         Emotion = new PetEmotionState(
             Approach(Emotion.Valence, baseline.Valence, 0.08 * dt),
             Approach(Emotion.Arousal, baseline.Arousal, 0.12 * dt),
-            Approach(Emotion.Energy, baseline.Energy, 0.035 * dt),
-            Approach(Emotion.Attachment, baseline.Attachment, 0.008 * dt));
+            Math.Clamp(Emotion.Energy + (resting ? 0.012 : -Math.Max(0, Emotion.StressLoad - 0.2) * 0.001) * dt, 0, 1),
+            Approach(Emotion.Attachment, baseline.Attachment, 0.0001 * dt))
+        {
+            StressLoad = Approach(Emotion.StressLoad, baseline.StressLoad, (resting ? 0.035 : 0.012) * dt),
+            CuriosityDrive = Approach(Emotion.CuriosityDrive, baseline.CuriosityDrive, 0.008 * dt),
+            RewardExpectation = Approach(Emotion.RewardExpectation, baseline.RewardExpectation, 0.02 * dt)
+        };
         return Emotion;
     }
 
@@ -122,7 +174,9 @@ public sealed class PetMind
                 arousal: 0.12,
                 energy: -0.04,
                 attachment: 0.002 * warmth,
-                appraisalTrigger: "silent_concern"),
+                appraisalTrigger: "silent_concern",
+                certainty: 0.65,
+                controllability: 0.2),
             PetStimulus.OfferHelp => Create(
                 PetCommand.Concern,
                 "看起来卡住了，要我帮你看看吗？",
@@ -131,7 +185,10 @@ public sealed class PetMind
                 arousal: 0.2 * (1 - restraint / 2),
                 energy: -0.025,
                 attachment: 0.003 * warmth,
-                appraisalTrigger: "offer_help"),
+                appraisalTrigger: "offer_help",
+                certainty: 0.65,
+                controllability: 0.55,
+                novelty: 0.08),
             PetStimulus.Greet => Create(
                 PetCommand.Greet,
                 "你回来啦，我一直在这里",
@@ -140,7 +197,11 @@ public sealed class PetMind
                 arousal: 0.14 * playfulness,
                 energy: 0.035,
                 attachment: 0.003 * warmth,
-                appraisalTrigger: "greeting"),
+                appraisalTrigger: "greeting",
+                certainty: 0.9,
+                controllability: 0.9,
+                novelty: 0.15,
+                socialSignal: 0.2),
             PetStimulus.Celebrate => Create(
                 PetCommand.Celebrate,
                 "成功啦！做得真棒",
@@ -149,7 +210,12 @@ public sealed class PetMind
                 arousal: 0.3 * playfulness,
                 energy: -0.015,
                 attachment: 0.004 * warmth,
-                appraisalTrigger: "celebration"),
+                appraisalTrigger: "celebration",
+                certainty: 0.95,
+                controllability: 0.9,
+                novelty: 0.1,
+                goalProgressDelta: 0.8,
+                socialSignal: 0.3),
             PetStimulus.RespondToUser => Create(
                 PetCommand.Greet,
                 "我在，正在听你说",
@@ -158,7 +224,11 @@ public sealed class PetMind
                 arousal: 0.08,
                 energy: 0,
                 attachment: 0.002 * warmth,
-                appraisalTrigger: "user_message"),
+                appraisalTrigger: "user_message",
+                certainty: 0.85,
+                controllability: 0.8,
+                novelty: 0.04,
+                socialSignal: 0.12),
             _ => throw new ArgumentOutOfRangeException(nameof(stimulus))
         };
 
@@ -183,26 +253,10 @@ public sealed class PetMind
             "rest" => PetCommand.Rest,
             _ => PetCommand.Greet
         };
-        var (valence, arousal, energy) = emotion switch
-        {
-            "happy" => (0.18, 0.12, 0.02),
-            "excited" => (0.26, 0.26, 0.04),
-            "concerned" => (-0.12, 0.10, -0.02),
-            "calm" => (0.08, -0.10, -0.01),
-            _ => (0.04, 0.02, 0.0)
-        };
-
-        var reaction = Create(
-            command,
-            safeMessage,
-            policyAllowsSpeech,
-            valence,
-            arousal,
-            energy,
-            0,
-            "model_expression");
-        Emotion = reaction.Emotion;
-        return reaction;
+        // Generated wording and labels are presentation proposals, not evidence about
+        // the pet's internal state. Only evaluated external events may update PetMind.
+        _ = emotion;
+        return new PetReaction(command, safeMessage, policyAllowsSpeech, Emotion);
     }
 
     private PetReaction Create(
@@ -213,17 +267,25 @@ public sealed class PetMind
         double arousal,
         double energy,
         double attachment,
-        string appraisalTrigger = "interaction")
+        string appraisalTrigger = "interaction",
+        double certainty = 0.9,
+        double controllability = 0.8,
+        double novelty = 0,
+        double goalProgressDelta = 0,
+        double socialSignal = 0)
     {
         var emotion = Appraise(new PetAppraisalEvent(
             appraisalTrigger,
             GoalRelevance: 1,
             OutcomeValence: valence,
             ArousalDelta: arousal,
-            Certainty: 0.9,
-            Controllability: 0.8,
+            Certainty: certainty,
+            Controllability: controllability,
             EnergyDelta: energy,
-            RelationshipDelta: attachment));
+            RelationshipDelta: attachment,
+            Novelty: novelty,
+            GoalProgressDelta: goalProgressDelta,
+            SocialSignal: socialSignal));
         return new PetReaction(command, message, shouldSpeak, emotion);
     }
 

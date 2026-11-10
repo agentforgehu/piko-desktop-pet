@@ -34,6 +34,9 @@ public partial class SettingsWindow : Window
         UserNameText.Text = settings.UserName;
         CustomAddressText.Text = settings.CustomAddress;
         PersonalityText.Text = settings.Personality;
+        WarmthSlider.Value = settings.PersonalityWarmth;
+        PlayfulnessSlider.Value = settings.PersonalityPlayfulness;
+        RestraintSlider.Value = settings.PersonalityRestraint;
         ProactivityCombo.SelectedIndex = (int)settings.Proactivity;
     }
 
@@ -71,6 +74,9 @@ public partial class SettingsWindow : Window
             UserName = UserNameText.Text.Trim(),
             CustomAddress = CustomAddressText.Text.Trim(),
             Personality = PersonalityText.Text.Trim(),
+            PersonalityWarmth = WarmthSlider.Value,
+            PersonalityPlayfulness = PlayfulnessSlider.Value,
+            PersonalityRestraint = RestraintSlider.Value,
             Proactivity = (PetProactivity)Math.Max(0, ProactivityCombo.SelectedIndex),
             ForegroundActivityAwarenessEnabled = ForegroundActivityCheck.IsChecked == true
         };

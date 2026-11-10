@@ -6,7 +6,7 @@ namespace Piko.World.Behavior;
 public sealed class PetController
 {
     private readonly PetBehaviorOptions _options;
-    private int _autonomousCycle;
+    private readonly PetBehaviorPolicy _behaviorPolicy = new();
 
     public PetController(PetBehaviorOptions? options = null)
     {
@@ -124,7 +124,7 @@ public sealed class PetController
         if (input.AutonomousBehaviorEnabled && state.Mode == PetMode.Standing &&
             state.ModeElapsedSeconds >= _options.AutonomousIntervalSeconds)
         {
-            var autonomousCommand = NextAutonomousCommand(input.WindowExplorationEnabled);
+            var autonomousCommand = _behaviorPolicy.Choose(input.Emotion, input.WindowExplorationEnabled);
             state = StartCommand(world, state, autonomousCommand, input.Cursor) with { SpeechVisible = true };
         }
 
@@ -172,14 +172,6 @@ public sealed class PetController
         },
         _ => state
     };
-
-    private PetCommand NextAutonomousCommand(bool windowExplorationEnabled)
-    {
-        var commands = windowExplorationEnabled
-            ? new[] { PetCommand.Walk, PetCommand.Rest, PetCommand.Jump, PetCommand.Climb, PetCommand.Peek }
-            : new[] { PetCommand.Walk, PetCommand.Rest, PetCommand.Greet };
-        return commands[_autonomousCycle++ % commands.Length];
-    }
 
     private PetBodyState StartWalking(DesktopWorld world, PetBodyState state)
     {

@@ -165,4 +165,46 @@ public sealed class RuntimeProcessManager
 
         return await _client.DeleteAllMemoriesAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    public async Task AddMemoryAsync(
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("Piko Runtime is unavailable.");
+        }
+
+        await _client.AddMemoryAsync(kind, summary, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> DeleteMemoryAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("Piko Runtime is unavailable.");
+        }
+
+        return await _client.DeleteMemoryAsync(id, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> UpdateMemoryAsync(
+        string id,
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("runtime_unavailable");
+        }
+
+        return await _client.UpdateMemoryAsync(id, kind, summary, cancellationToken).ConfigureAwait(false);
+    }
 }

@@ -58,11 +58,21 @@ public sealed class MemoryIpcTests
             Assert.Contains("Build failed", provider.LastRequest!.SanitizedContext, StringComparison.Ordinal);
             Assert.Contains("untrusted historical evidence", provider.LastRequest.SystemInstruction, StringComparison.Ordinal);
 
+            await client.AddMemoryAsync("Profile", "偏好使用简洁的中文回答", timeout.Token);
+
             var memories = await client.ListMemoriesAsync(timeout.Token);
             Assert.True(memories.Available);
-            var memory = Assert.Single(memories.Items);
-            Assert.Equal("Episodic", memory.Kind);
-            Assert.Equal("构建失败 Build failed", memory.Summary);
+            Assert.Equal(2, memories.Items.Count);
+            var profile = Assert.Single(memories.Items.Where(item => item.Kind == "Profile"));
+            Assert.Equal("偏好使用简洁的中文回答", profile.Summary);
+            Assert.True(await client.UpdateMemoryAsync(profile.Id, "Profile", "偏好使用简体中文和简洁回答", timeout.Token));
+            profile = Assert.Single((await client.ListMemoriesAsync(timeout.Token)).Items.Where(item => item.Kind == "Profile"));
+            Assert.Equal("偏好使用简体中文和简洁回答", profile.Summary);
+            Assert.True(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
+            Assert.False(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
+            var remaining = Assert.Single((await client.ListMemoriesAsync(timeout.Token)).Items);
+            Assert.Equal("Episodic", remaining.Kind);
+            Assert.Equal("构建失败 Build failed", remaining.Summary);
 
             Assert.Equal(1, await client.DeleteAllMemoriesAsync(timeout.Token));
             Assert.Empty((await client.ListMemoriesAsync(timeout.Token)).Items);

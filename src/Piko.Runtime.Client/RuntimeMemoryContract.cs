@@ -12,3 +12,7 @@ public sealed record RuntimeMemoryListResponse(
     bool Available,
     string Reason,
     IReadOnlyList<RuntimeMemoryItem> Items);
+
+public sealed record RuntimeMemoryAddRequest(string Kind, string Summary);
+public sealed record RuntimeMemoryUpdateRequest(string Id, string Kind, string Summary);
+public sealed record RuntimeMemoryDeleteRequest(string Id);

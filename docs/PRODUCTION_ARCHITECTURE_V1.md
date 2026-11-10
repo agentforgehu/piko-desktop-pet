@@ -35,6 +35,8 @@ VS Code Extension ── authenticated local IPC ── Piko.Runtime
 - Windows、VS Code、Git、构建、测试和文件活动 Sensors；
 - 事件校验、隐私过滤、顺序分发和短期缓冲；
 - Situation Engine 和 Intervention Policy；
+- PetMind 情境评价与短期 Homeostasis 状态（valence、arousal、energy、stress load、curiosity drive、reward expectation、关系熟悉度）；
+- 只读的离线 ImprovementGate，校验 holdout、质量、成本、安全、隐私和回归证据；
 - SQLite/加密字段记忆存储；
 - 用户启用记忆时，Agent 规划前从近期有效记忆中检索最多五条低敏摘要；高敏内容不解密进入检索结果；
 - 本地 IPC 身份校验、速率限制和消息版本协商；

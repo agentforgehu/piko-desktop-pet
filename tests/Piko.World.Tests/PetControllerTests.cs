@@ -8,7 +8,7 @@ namespace Piko.World.Tests;
 public sealed class PetControllerTests
 {
     [Fact]
-    public void PetMind_ModelExpressionIsAllowlistedBoundedAndChangesEmotion()
+    public void PetMind_ModelExpressionIsAllowlistedBoundedAndDoesNotMutateInternalState()
     {
         var mind = new PetMind();
 
@@ -17,8 +17,8 @@ public sealed class PetControllerTests
         Assert.Equal(PetCommand.Celebrate, reaction.Command);
         Assert.Equal(500, reaction.Message.Length);
         Assert.True(reaction.ShouldSpeak);
-        Assert.True(reaction.Emotion.Valence > PetEmotionState.Baseline.Valence);
-        Assert.True(reaction.Emotion.Arousal > PetEmotionState.Baseline.Arousal);
+        Assert.Equal(PetEmotionState.Baseline, reaction.Emotion);
+        Assert.Null(mind.LastTransition);
     }
 
     [Fact]
@@ -58,6 +58,62 @@ public sealed class PetControllerTests
         }
 
         Assert.Equal(initialRelationship, mind.Emotion.Attachment);
+    }
+
+    [Fact]
+    public void PetMind_AppraisalUpdatesStressCuriosityAndRewardDrives()
+    {
+        var mind = new PetMind();
+        var before = mind.Emotion;
+
+        var after = mind.Appraise(new PetAppraisalEvent(
+            "novel_goal_progress",
+            GoalRelevance: 1,
+            OutcomeValence: 0.25,
+            ArousalDelta: 0.1,
+            Certainty: 0.8,
+            Controllability: 0.9,
+            Novelty: 0.8,
+            GoalProgressDelta: 0.7));
+
+        Assert.True(after.CuriosityDrive > before.CuriosityDrive);
+        Assert.True(after.RewardExpectation > before.RewardExpectation);
+        Assert.True(after.StressLoad >= 0 && after.StressLoad <= 1);
+    }
+
+    [Fact]
+    public void PetMind_RestingRestoresEnergyAndRelievesStressOverTime()
+    {
+        var mind = new PetMind();
+        var stressed = mind.Appraise(new PetAppraisalEvent(
+            "uncontrolled_failure", 1, -0.4, 0.3, 0.1, 0.1, EnergyDelta: -0.2));
+
+        var recovered = mind.Advance(20, resting: true);
+
+        Assert.True(recovered.Energy > stressed.Energy);
+        Assert.True(recovered.StressLoad < stressed.StressLoad);
+    }
+
+    [Fact]
+    public void PetBehaviorPolicy_PrioritizesRestForLowEnergyOrHighStress()
+    {
+        var policy = new PetBehaviorPolicy();
+
+        Assert.Equal(PetCommand.Rest, policy.Choose(
+            PetEmotionState.Baseline with { Energy = 0.2 }, windowExplorationEnabled: true));
+        Assert.Equal(PetCommand.Rest, policy.Choose(
+            PetEmotionState.Baseline with { StressLoad = 0.9 }, windowExplorationEnabled: true));
+    }
+
+    [Fact]
+    public void PetBehaviorPolicy_UsesCuriosityToSelectExploration()
+    {
+        var policy = new PetBehaviorPolicy();
+
+        var command = policy.Choose(
+            PetEmotionState.Baseline with { CuriosityDrive = 0.9 }, windowExplorationEnabled: true);
+
+        Assert.Contains(command, new[] { PetCommand.Walk, PetCommand.Climb, PetCommand.Jump, PetCommand.Peek });
     }
 
     private readonly DesktopWorldCompiler _compiler = new();

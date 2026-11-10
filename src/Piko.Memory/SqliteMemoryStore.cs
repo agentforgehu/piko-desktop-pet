@@ -204,6 +204,56 @@ public sealed class SqliteMemoryStore : IDisposable
         CancellationToken cancellationToken = default) =>
         await DeleteWhereAsync("kind = $value", (int)kind, cancellationToken).ConfigureAwait(false);
 
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM memories WHERE id = $id;";
+        command.Parameters.AddWithValue("$id", id.ToString("N"));
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
+    }
+
+    public async Task<bool> UpdateAsync(
+        Guid id,
+        MemoryDraft draft,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateDraft(draft);
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        var expiresAt = draft.ExpiresAt ?? DefaultExpiry(draft.Kind, now);
+        var summary = _protector.Protect(draft.Summary, $"{id:N}:summary");
+        var payload = _protector.Protect(draft.Payload, $"{id:N}:payload");
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE memories
+            SET kind = $kind,
+                updated_at = $updated,
+                expires_at = $expires,
+                sensitivity = $sensitivity,
+                source = $source,
+                summary_cipher = $summary,
+                payload_cipher = $payload
+            WHERE id = $id AND (expires_at IS NULL OR expires_at > $now);
+            """;
+        command.Parameters.AddWithValue("$id", id.ToString("N"));
+        command.Parameters.AddWithValue("$kind", (int)draft.Kind);
+        command.Parameters.AddWithValue("$updated", now.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$expires", expiresAt is null
+            ? DBNull.Value
+            : expiresAt.Value.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$sensitivity", (int)draft.Sensitivity);
+        command.Parameters.AddWithValue("$source", draft.Source);
+        command.Parameters.AddWithValue("$summary", summary);
+        command.Parameters.AddWithValue("$payload", payload);
+        command.Parameters.AddWithValue("$now", now.ToString("O", CultureInfo.InvariantCulture));
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
+    }
+
     public async Task<int> DeleteAllAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();

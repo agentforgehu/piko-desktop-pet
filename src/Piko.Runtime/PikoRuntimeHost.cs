@@ -417,6 +417,108 @@ public sealed class PikoRuntimeHost
                         result.WasTruncated));
             }
 
+            if (request.Type == "memory.add")
+            {
+                RuntimeMemoryAddRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryAddRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (memoryRequest is null ||
+                    !Enum.TryParse<MemoryKind>(memoryRequest.Kind, ignoreCase: true, out var memoryKind) ||
+                    memoryKind is not (MemoryKind.Profile or MemoryKind.Semantic or MemoryKind.Episodic) ||
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Fail(request.RequestId,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled");
+                }
+
+                var summary = memoryRequest.Summary.Trim();
+                await activeMemoryStore.AddAsync(
+                    new MemoryDraft(
+                        memoryKind,
+                        summary,
+                        summary,
+                        DataSensitivity.Low,
+                        "user.confirmed"),
+                    DateTimeOffset.UtcNow,
+                    requestCancellation).ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.added", new { added = true });
+            }
+
+            if (request.Type == "memory.update")
+            {
+                RuntimeMemoryUpdateRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryUpdateRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (memoryRequest is null || !Guid.TryParseExact(memoryRequest.Id, "N", out var memoryId) ||
+                    memoryRequest.Kind is not ("Profile" or "Semantic" or "Episodic") ||
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Fail(request.RequestId,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled");
+                }
+
+                var draft = new MemoryDraft(
+                    Enum.Parse<MemoryKind>(memoryRequest.Kind),
+                    memoryRequest.Summary.Trim(),
+                    memoryRequest.Summary.Trim(),
+                    DataSensitivity.Low,
+                    "user.confirmed");
+                var updated = await activeMemoryStore.UpdateAsync(memoryId, draft, DateTimeOffset.UtcNow, requestCancellation)
+                    .ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.updated-one", new { updated });
+            }
+
+            if (request.Type == "memory.delete")
+            {
+                RuntimeMemoryDeleteRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryDeleteRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (memoryRequest is null || !Guid.TryParseExact(memoryRequest.Id, "N", out var memoryId))
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Fail(request.RequestId,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled");
+                }
+
+                var deleted = await activeMemoryStore.DeleteAsync(memoryId, requestCancellation).ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.deleted-one", new { deleted });
+            }
+
             if (request.Type == "memory.list")
             {
                 if (activeMemoryStore is null)

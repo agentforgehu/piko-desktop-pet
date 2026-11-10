@@ -32,7 +32,7 @@ public partial class PetWindow : Window
     private readonly WindowsSnapshotProvider _snapshotProvider = new();
     private readonly DesktopWorldCompiler _worldCompiler = new();
     private readonly PetController _controller = new();
-    private readonly PetMind _mind = new();
+    private readonly PetMind _mind;
     private readonly DispatcherTimer _worldTimer;
     private readonly DispatcherTimer _animationTimer;
     private readonly DispatcherTimer _runtimeSupervisorTimer;
@@ -81,6 +81,10 @@ public partial class PetWindow : Window
     {
         InitializeComponent();
         _settings = settings;
+        _mind = new PetMind(new PetPersonality(
+            settings.PersonalityWarmth,
+            settings.PersonalityPlayfulness,
+            settings.PersonalityRestraint));
         _recoveredFromCrash = recoveredFromCrash;
         _smokeTest = smokeTest;
         _automaticShutdownAfter = automaticShutdownAfter;
@@ -303,7 +307,7 @@ public partial class PetWindow : Window
             _settings.PointerAwarenessEnabled,
             _settings.WindowExplorationEnabled,
             _pendingReaction,
-            _mind.Advance(elapsed));
+            _mind.Advance(elapsed, resting: _controller.State.Mode == PetMode.Resting));
         _pendingCommand = null;
         _pendingReaction = null;
 
@@ -346,7 +350,7 @@ public partial class PetWindow : Window
             _ => 0
         };
 
-        var blinkPeriod = Math.Max(80, (int)Math.Round(165 - emotion.Arousal * 60));
+        var blinkPeriod = Math.Max(80, (int)Math.Round(165 - emotion.Arousal * 60 + emotion.StressLoad * 20));
         var blink = state.Mode == PetMode.Resting || _visualFrame % blinkPeriod is >= 0 and <= 5;
         LeftEye.Height = blink || state.Mode == PetMode.Celebrating
             ? 2
@@ -363,7 +367,7 @@ public partial class PetWindow : Window
                 : 49;
         Canvas.SetTop(LeftEye, eyeTop);
         Canvas.SetTop(RightEye, eyeTop);
-        BodyLayer.Opacity = 0.82 + emotion.Energy * 0.18;
+        BodyLayer.Opacity = Math.Clamp(0.82 + emotion.Energy * 0.18 - emotion.StressLoad * 0.1, 0.65, 1);
         SpeechBubble.Background = state.Mode switch
         {
             PetMode.Concerned => MediaBrushes.LightGoldenrodYellow,
@@ -656,6 +660,10 @@ public partial class PetWindow : Window
         if (dialog.ShowDialog() == true && dialog.Result is { } result)
         {
             _settings = result with { LastExitWasClean = false };
+            _mind.SetPersonality(new PetPersonality(
+                _settings.PersonalityWarmth,
+                _settings.PersonalityPlayfulness,
+                _settings.PersonalityRestraint));
             _settingsStore.Save(_settings);
             try
             {

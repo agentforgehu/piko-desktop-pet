@@ -119,6 +119,82 @@ public sealed class RuntimeIpcClient
             ?? throw new InvalidDataException("invalid_memory_list_response");
     }
 
+    public async Task AddMemoryAsync(
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default)
+    {
+        if (kind is not ("Profile" or "Semantic" or "Episodic") ||
+            string.IsNullOrWhiteSpace(summary) || summary.Length > 240)
+        {
+            throw new ArgumentException("Only a short, user-confirmed, non-sensitive memory can be added.");
+        }
+
+        var request = new RuntimeRequest(
+            RuntimeRequest.CurrentSchemaVersion,
+            Guid.NewGuid().ToString("N"),
+            "memory.add",
+            JsonSerializer.SerializeToElement(new RuntimeMemoryAddRequest(kind, summary.Trim()), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.added")
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_add_failed");
+        }
+    }
+
+    public async Task<bool> DeleteMemoryAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParseExact(id, "N", out var memoryId))
+        {
+            throw new ArgumentException("Memory identifier is invalid.", nameof(id));
+        }
+
+        var request = new RuntimeRequest(
+            RuntimeRequest.CurrentSchemaVersion,
+            Guid.NewGuid().ToString("N"),
+            "memory.delete",
+            JsonSerializer.SerializeToElement(new RuntimeMemoryDeleteRequest(memoryId.ToString("N")), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.deleted-one" || response.Payload is null ||
+            !response.Payload.Value.TryGetProperty("deleted", out var deleted) ||
+            deleted.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_delete_failed");
+        }
+
+        return deleted.GetBoolean();
+    }
+
+    public async Task<bool> UpdateMemoryAsync(
+        string id,
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParseExact(id, "N", out var memoryId) ||
+            kind is not ("Profile" or "Semantic" or "Episodic") ||
+            string.IsNullOrWhiteSpace(summary) || summary.Length > 240)
+        {
+            throw new ArgumentException("Only a short, user-confirmed, non-sensitive memory can be updated.");
+        }
+
+        var request = new RuntimeRequest(
+            RuntimeRequest.CurrentSchemaVersion,
+            Guid.NewGuid().ToString("N"),
+            "memory.update",
+            JsonSerializer.SerializeToElement(
+                new RuntimeMemoryUpdateRequest(memoryId.ToString("N"), kind, summary.Trim()), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.updated-one" || response.Payload is null ||
+            !response.Payload.Value.TryGetProperty("updated", out var updated) ||
+            updated.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_update_failed");
+        }
+
+        return updated.GetBoolean();
+    }
+
     public async Task<RuntimeAgentExecutionResponse> ExecuteReadProposalAsync(
         string proposalId,
         string workingDirectory,
@@ -173,7 +249,7 @@ public sealed class RuntimeIpcClient
         {
             "agent.plan" => RuntimeIpcTransport.PlanTimeout,
             "agent.execute-read" => RuntimeIpcTransport.ExecutionTimeout,
-            "memory.list" or "memory.delete-all" => TimeSpan.FromSeconds(10),
+            "memory.list" or "memory.add" or "memory.update" or "memory.delete" or "memory.delete-all" => TimeSpan.FromSeconds(10),
             _ => _timeout
         };
         return SendCoreAsync(request, responseTimeout, cancellationToken);
