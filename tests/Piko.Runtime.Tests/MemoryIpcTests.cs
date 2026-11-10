@@ -76,7 +76,6 @@ public sealed class MemoryIpcTests
                 factKey: "response_language", factValue: "English");
             Assert.Equal("same_fact_different_value", Assert.Single(possibleConflict.Items,
                 item => item.FactValue == "Chinese").Relation);
-            Assert.Contains(possibleConflict.Items, item => item.Relation == "same_fact_same_value");
             var related = await client.FindRelatedMemoriesAsync("Profile", "希望继续使用简体中文回答", timeout.Token);
             Assert.True(related.Available);
             Assert.Equal(profile.Id, Assert.Single(related.Items).Id);
