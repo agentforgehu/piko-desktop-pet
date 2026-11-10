@@ -2,11 +2,42 @@ using Piko.World.Behavior;
 using Piko.World.Compiler;
 using Piko.World.Geometry;
 using Piko.World.Model;
+using Piko.Cognition;
 
 namespace Piko.World.Tests;
 
 public sealed class PetControllerTests
 {
+    [Fact]
+    public void CognitionAffectSystemIsHostAgnosticBoundedAndExplainable()
+    {
+        var system = new AffectSystem();
+        var transition = system.Appraise(new AppraisalSignal(
+            "uncertain_goal_failure", 4, -3, 3, 0, 0, EnergyDelta: -4));
+
+        Assert.Equal("uncertain_goal_failure", transition.Signal.Cause);
+        Assert.Equal(AffectState.Baseline, transition.Before);
+        Assert.Equal(system.State, transition.After);
+        Assert.InRange(transition.After.Valence, -1, 1);
+        Assert.InRange(transition.After.Arousal, 0, 1);
+        Assert.InRange(transition.After.Energy, 0, 1);
+        Assert.InRange(transition.After.StressLoad, 0, 1);
+        Assert.True(transition.After.StressLoad > transition.Before.StressLoad);
+    }
+
+    [Fact]
+    public void CognitionHomeostasisPolicySuggestsModesWithoutGrantingExploration()
+    {
+        var policy = new HomeostasisPolicy();
+
+        Assert.Equal(BehaviorDirective.Rest, policy.Choose(
+            AffectState.Baseline with { Energy = 0.1 }, explorationAllowed: true));
+        Assert.Equal(BehaviorDirective.Continue, policy.Choose(
+            AffectState.Baseline with { CuriosityDrive = 0.99 }, explorationAllowed: false));
+        Assert.Equal(BehaviorDirective.Explore, policy.Choose(
+            AffectState.Baseline with { CuriosityDrive = 0.99 }, explorationAllowed: true));
+    }
+
     [Fact]
     public void PetMind_ModelExpressionIsAllowlistedBoundedAndDoesNotMutateInternalState()
     {

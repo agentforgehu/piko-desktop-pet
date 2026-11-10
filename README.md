@@ -1,8 +1,10 @@
 # Piko Desktop Pet
 
+> **项目目标已调整：通用智能体认知核心优先。** Piko 桌宠是第一个宿主/适配器，不再是记忆、情绪和人格系统的定义边界。认知核心章程与分阶段验收见 [通用智能体认知核心项目章程](docs/COGNITION_CORE_CHARTER.md)。
+
 Piko 是一个 Windows 10/11 x64、本地优先的智能桌面宠物。它不是悬浮聊天按钮，而是把真实窗口、屏幕边缘、鼠标、文件活动和已授权的开发事件当作生活环境。
 
-当前开发目标：`1.0.0` 正式版候选；候选 PR 验证流水线生成可下载的测试包。正式 `1.0` 仍在生产收口阶段。
+桌宠 `1.0.0` 发布工作按既有计划独立维护；新的认知系统目标以可复用核心为中心，桌宠 UI 和世界行为仅为一个集成宿主。
 
 本轮范围、验收步骤和后续优先级见 [1.0.0 交付与验收](docs/RELEASE_1.0_READINESS.md)。
 
@@ -86,6 +88,7 @@ dotnet run --project src/Piko.Desktop/Piko.Desktop.csproj
 ## 项目结构
 
 ```text
+src/Piko.Cognition/         宿主无关的情绪/稳态、人格偏好和行为建议核心
 src/Piko.World/             物理坐标、桌面世界编译器、宠物状态机
 src/Piko.World.Windows/     Win32、DWM、显示器与窗口观察
 src/Piko.Desktop/           WPF 桌宠、托盘、设置、Agent 与记忆界面

@@ -1,4 +1,6 @@
-# Piko Cognitive State System V1
+# Piko Cognitive State System V1 — desktop host prototype
+
+> Project scope is now defined by [the Cognition Core Charter](COGNITION_CORE_CHARTER.md): a reusable agent cognition system. This document records the first desktop-host prototype and its current limits; Piko desktop behavior is an adapter example, not the system's product boundary.
 
 ## Product goal
 

@@ -4,6 +4,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Piko.World", "src\Piko.World\Piko.World.csproj", "{6DAE40FC-B5F4-4729-B80B-60DA35359764}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Piko.Cognition", "src\Piko.Cognition\Piko.Cognition.csproj", "{B5D8E51A-4486-431B-B646-75F84E6CCB0A}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Piko.World.Windows", "src\Piko.World.Windows\Piko.World.Windows.csproj", "{6ED6F78A-D08F-42DF-83D6-0E74BA448F29}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Piko.WorldLab", "src\Piko.WorldLab\Piko.WorldLab.csproj", "{6145C75B-E8C8-4F52-80F2-A9412429F2A2}"
@@ -48,6 +50,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B5D8E51A-4486-431B-B646-75F84E6CCB0A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B5D8E51A-4486-431B-B646-75F84E6CCB0A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B5D8E51A-4486-431B-B646-75F84E6CCB0A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B5D8E51A-4486-431B-B646-75F84E6CCB0A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6DAE40FC-B5F4-4729-B80B-60DA35359764}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6DAE40FC-B5F4-4729-B80B-60DA35359764}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6DAE40FC-B5F4-4729-B80B-60DA35359764}.Release|Any CPU.ActiveCfg = Release|Any CPU

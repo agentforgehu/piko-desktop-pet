@@ -1,3 +1,5 @@
+using Piko.Cognition;
+
 namespace Piko.World.Behavior;
 
 public enum PetStimulus
@@ -69,11 +71,12 @@ public sealed record PetReaction(
 
 public sealed class PetMind
 {
-    private PetPersonality _personality;
+    private readonly AffectSystem _affectSystem = new();
+    private InteractionProfile _profile;
 
     public PetMind(PetPersonality? personality = null)
     {
-        _personality = (personality ?? new PetPersonality()).Validate();
+        _profile = ToCoreProfile((personality ?? new PetPersonality()).Validate());
         Emotion = PetEmotionState.Baseline;
     }
 
@@ -86,83 +89,52 @@ public sealed class PetMind
     public PetEmotionTransition? LastTransition { get; private set; }
 
     public void SetPersonality(PetPersonality personality) =>
-        _personality = (personality ?? throw new ArgumentNullException(nameof(personality))).Validate();
+        _profile = ToCoreProfile((personality ?? throw new ArgumentNullException(nameof(personality))).Validate());
 
     public PetEmotionState Appraise(PetAppraisalEvent appraisal)
     {
         ArgumentNullException.ThrowIfNull(appraisal);
-        appraisal = appraisal with
-        {
-            Trigger = string.IsNullOrWhiteSpace(appraisal.Trigger)
-                ? "unspecified"
-                : appraisal.Trigger[..Math.Min(appraisal.Trigger.Length, 64)],
-            GoalRelevance = ClampFinite(appraisal.GoalRelevance, 0, 1),
-            OutcomeValence = ClampFinite(appraisal.OutcomeValence, -0.4, 0.4),
-            ArousalDelta = ClampFinite(appraisal.ArousalDelta, -0.4, 0.4),
-            Certainty = ClampFinite(appraisal.Certainty, 0, 1),
-            Controllability = ClampFinite(appraisal.Controllability, 0, 1),
-            EnergyDelta = ClampFinite(appraisal.EnergyDelta, -0.2, 0.2),
-            RelationshipDelta = ClampFinite(appraisal.RelationshipDelta, -0.01, 0.01),
-            Novelty = ClampFinite(appraisal.Novelty, 0, 1),
-            GoalProgressDelta = ClampFinite(appraisal.GoalProgressDelta, -1, 1),
-            SocialSignal = ClampFinite(appraisal.SocialSignal, -1, 1)
-        };
-        var relevance = ClampFinite(appraisal.GoalRelevance, 0, 1);
-        var certainty = ClampFinite(appraisal.Certainty, 0, 1);
-        var controllability = ClampFinite(appraisal.Controllability, 0, 1);
-        var outcome = ClampFinite(appraisal.OutcomeValence, -0.4, 0.4);
-        var arousalDelta = ClampFinite(appraisal.ArousalDelta, -0.4, 0.4);
-        var novelty = ClampFinite(appraisal.Novelty, 0, 1);
-        var progress = ClampFinite(appraisal.GoalProgressDelta, -1, 1);
-        var socialSignal = ClampFinite(appraisal.SocialSignal, -1, 1);
         var before = Emotion;
-        var uncertainty = 1 - certainty;
-        var stressRise = relevance * (
-            Math.Max(0, -outcome) * 0.18 + uncertainty * 0.12 +
-            (1 - controllability) * 0.1 + Math.Max(0, arousalDelta) * 0.04);
-        var stressRecovery = relevance * Math.Max(0, outcome) * 0.06 +
-                             Math.Max(0, socialSignal) * 0.025;
-        var after = new PetEmotionState(
-            Math.Clamp(before.Valence + relevance * outcome, -1, 1),
-            Math.Clamp(before.Arousal + relevance * arousalDelta +
-                       relevance * uncertainty * 0.12 + relevance * (1 - controllability) * 0.06, 0, 1),
-            Math.Clamp(before.Energy + ClampFinite(appraisal.EnergyDelta, -0.2, 0.2) -
-                       relevance * Math.Max(0, arousalDelta) * 0.01, 0, 1),
-            Math.Clamp(before.Attachment + ClampFinite(appraisal.RelationshipDelta, -0.01, 0.01), 0, 1))
-        {
-            StressLoad = Math.Clamp(before.StressLoad + stressRise - stressRecovery, 0, 1),
-            CuriosityDrive = Math.Clamp(before.CuriosityDrive + relevance * novelty * 0.18 -
-                                        relevance * uncertainty * before.StressLoad * 0.025, 0, 1),
-            RewardExpectation = Math.Clamp(before.RewardExpectation + relevance * progress * 0.16 +
-                                           relevance * outcome * 0.04, 0, 1)
-        };
-        Emotion = after;
-        LastTransition = new PetEmotionTransition(appraisal, before, after);
-        return after;
+        var transition = _affectSystem.Appraise(new AppraisalSignal(
+            appraisal.Trigger,
+            appraisal.GoalRelevance,
+            appraisal.OutcomeValence,
+            appraisal.ArousalDelta,
+            appraisal.Certainty,
+            appraisal.Controllability,
+            appraisal.EnergyDelta,
+            appraisal.RelationshipDelta,
+            appraisal.Novelty,
+            appraisal.GoalProgressDelta,
+            appraisal.SocialSignal));
+        Emotion = FromCoreState(transition.After);
+        var normalizedAppraisal = new PetAppraisalEvent(
+            transition.Signal.Cause,
+            transition.Signal.GoalRelevance,
+            transition.Signal.OutcomeValence,
+            transition.Signal.ArousalDelta,
+            transition.Signal.Certainty,
+            transition.Signal.Controllability,
+            transition.Signal.EnergyDelta,
+            transition.Signal.SocialContinuityDelta,
+            transition.Signal.Novelty,
+            transition.Signal.GoalProgressDelta,
+            transition.Signal.SocialSignal);
+        LastTransition = new PetEmotionTransition(normalizedAppraisal, before, Emotion);
+        return Emotion;
     }
 
     public PetEmotionState Advance(double elapsedSeconds, bool resting = false)
     {
-        var dt = ClampFinite(elapsedSeconds, 0, 1);
-        var baseline = PetEmotionState.Baseline;
-        Emotion = new PetEmotionState(
-            Approach(Emotion.Valence, baseline.Valence, 0.08 * dt),
-            Approach(Emotion.Arousal, baseline.Arousal, 0.12 * dt),
-            Math.Clamp(Emotion.Energy + (resting ? 0.012 : -Math.Max(0, Emotion.StressLoad - 0.2) * 0.001) * dt, 0, 1),
-            Approach(Emotion.Attachment, baseline.Attachment, 0.0001 * dt))
-        {
-            StressLoad = Approach(Emotion.StressLoad, baseline.StressLoad, (resting ? 0.035 : 0.012) * dt),
-            CuriosityDrive = Approach(Emotion.CuriosityDrive, baseline.CuriosityDrive, 0.008 * dt),
-            RewardExpectation = Approach(Emotion.RewardExpectation, baseline.RewardExpectation, 0.02 * dt)
-        };
+        Emotion = FromCoreState(_affectSystem.Advance(elapsedSeconds, resting));
         return Emotion;
     }
 
     public PetReaction React(PetStimulus stimulus, bool policyAllowsSpeech)
     {
-        var warmth = _personality.Warmth;
-        var playfulness = _personality.Playfulness;
-        var restraint = _personality.Restraint;
+        var warmth = _profile.Warmth;
+        var playfulness = _profile.Playfulness;
+        var restraint = _profile.Restraint;
 
         var reaction = stimulus switch
         {
@@ -289,12 +261,18 @@ public sealed class PetMind
         return new PetReaction(command, message, shouldSpeak, emotion);
     }
 
-    private static double ClampFinite(double value, double minimum, double maximum) =>
-        double.IsFinite(value) ? Math.Clamp(value, minimum, maximum) : 0;
+    private static PetEmotionState FromCoreState(AffectState state) => new(
+        state.Valence,
+        state.Arousal,
+        state.Energy,
+        state.SocialContinuity)
+    {
+        StressLoad = state.StressLoad,
+        CuriosityDrive = state.CuriosityDrive,
+        RewardExpectation = state.RewardExpectation
+    };
 
-    private static double Approach(double value, double target, double maximumDelta) =>
-        value < target
-            ? Math.Min(target, value + maximumDelta)
-            : Math.Max(target, value - maximumDelta);
+    private static InteractionProfile ToCoreProfile(PetPersonality personality) =>
+        new InteractionProfile(personality.Warmth, personality.Playfulness, personality.Restraint).Normalize();
 }
 
