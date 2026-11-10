@@ -52,7 +52,11 @@ The current implementation uses fixed deterministic weights. It applies per-even
 
 Memory records retain source, type, sensitivity, timestamps, expiry, encrypted summary/payload, and a stable identifier. Memory is optional and local. Retrieval is bounded to recent, unexpired Public/Low records; the database filters sensitivity before decryption; only a few short summaries enter planning context. Retrieved content is explicitly untrusted historical evidence, not instructions.
 
-The current automatic writer stores low-sensitivity development outcomes. It does not store chat transcripts, source code, window titles, or keyboard input. Users can explicitly add, edit, and delete short Profile, Semantic, and Episodic summaries. These edits are marked `user.confirmed`, bounded to low sensitivity, and encrypted at rest. Conflict and supersession handling remains a next milestone; automatic extraction must not expand until those semantics and provenance are designed.
+The current automatic writer stores low-sensitivity development outcomes. It does not store chat transcripts, source code, window titles, or keyboard input. Users can explicitly add, edit, and delete short Profile, Semantic, and Episodic summaries. These edits are marked `UserConfirmed`, bounded to low sensitivity, and encrypted at rest. Each memory also carries a provenance class (`ObservedEvent`, `UserConfirmed`, `ImportedKnowledge`, or `Hypothetical`) so example material cannot silently become autobiography. Old databases migrate existing rows to `ObservedEvent`.
+
+Recall is an activation decision rather than a raw archive lookup: lexical relevance, memory type, source provenance, and time decay jointly rank eligible records. Stable Profile/Semantic facts decay less than Working/Episodic events. Hypothetical material is not injected into planning context. Each hit carries a compact activation reason and score for auditability. Conflict and supersession handling remains a next milestone; automatic extraction must not expand until those semantics have their own evidence and user controls.
+
+The user's shared reference video is not reliably readable as a transcript in the public web view. The indexed creator materials and discussion around the related “识海工程拆解” post emphasize storage, activation, and decay as concrete memory questions; we treat that as a useful design prompt, not scientific validation. The system also adopts the engineering distinction between a language model proposing wording and local state logic deciding internal transitions. See [the referenced Douyin post](https://www.douyin.com/video/7686281845280951606) and [the user's original share](https://www.douyin.com/video/7684611830387330314).
 
 ## Stable personality and goals
 
@@ -64,7 +68,7 @@ The existing text persona controls natural-language style. Three versioned numer
 
 ## Self-improvement boundary
 
-The system may collect an approved failure case, formulate a hypothesis, create an isolated candidate, and compare it with a frozen baseline and holdout set. The new offline `ImprovementGate` rejects missing evidence, insufficient holdout size, quality regressions, cost overruns, and any safety/privacy/regression failure. It marks a passing candidate for maintainer review. It cannot modify production, edit live prompts, grant permissions, or publish a candidate.
+The system may collect an approved failure case, formulate a hypothesis, create an isolated candidate, and compare it with a frozen baseline and holdout set. `OfflineCandidateEvaluator` performs paired scenario aggregation for quality, input/output tokens, model calls, latency, safety, privacy, and per-scenario regressions. It emits a deterministic SHA-256 digest over version labels and aggregate measurements without storing prompts or replies. `ImprovementGate` rejects missing/insufficient evidence, quality regressions, token cost overruns, latency increases beyond 20%, extra model calls, and any safety/privacy/regression failure. It marks a passing candidate for maintainer review. It cannot modify production, edit live prompts, grant permissions, or publish a candidate.
 
 Every proposal should record candidate ID, risk, code/config version, model and prompt version, dataset/evaluation version, evidence digest, quality, cost, safety/privacy/regression results, decision, approver, and rollback version. Personal memory never becomes cross-user training data implicitly.
 
@@ -77,7 +81,7 @@ The system is evaluated as a whole and by ablation:
 3. Memory: relevant recall, expiry, sensitivity exclusion, false recall, deletion, and bilingual queries.
 4. Personality: style remains stable across positive/negative events; numeric settings change local expression predictably.
 5. Behavior: low energy/high stress favors rest; curiosity increases only approved exploration; quiet/user stop rules prevail.
-6. Self-improvement: all hard-gate failures block review eligibility; passing results still cannot change production.
+6. Self-improvement: paired results on the same frozen holdout produce a stable digest; any per-case quality, call-count, latency, token-cost, safety, privacy, or regression failure blocks review eligibility; passing results still cannot change production.
 7. Efficiency: record prompt tokens, model calls, latency, and successful tasks; compare the same scenarios with memory and optional state layers disabled.
 
 Public datasets can supplement these checks, but the release gate is a versioned Piko-specific scenario set with disclosed model, prompt, evaluator, budget, sample count, and human spot checks.

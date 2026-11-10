@@ -8,7 +8,8 @@ public sealed record MemoryDraft(
     string Payload,
     DataSensitivity Sensitivity,
     string Source,
-    DateTimeOffset? ExpiresAt = null);
+    DateTimeOffset? ExpiresAt = null,
+    MemoryProvenance Provenance = MemoryProvenance.ObservedEvent);
 
 public sealed record MemoryRecord(
     Guid Id,
@@ -19,6 +20,12 @@ public sealed record MemoryRecord(
     DataSensitivity Sensitivity,
     string Source,
     string Summary,
-    string Payload);
+    string Payload,
+    MemoryProvenance Provenance = MemoryProvenance.ObservedEvent);
 
-public sealed record MemorySearchHit(MemoryRecord Record, double Score);
+public sealed record MemorySearchHit(
+    MemoryRecord Record,
+    double Score,
+    double LexicalRelevance,
+    double RecencyWeight,
+    string ActivationReason);

@@ -49,9 +49,9 @@ public sealed class SqliteMemoryStore : IDisposable
         command.Transaction = (SqliteTransaction)transaction;
         command.CommandText = """
             INSERT INTO memories
-                (id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher)
+                (id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance)
             VALUES
-                ($id, $kind, $created, $updated, $expires, $sensitivity, $source, $summary, $payload);
+                ($id, $kind, $created, $updated, $expires, $sensitivity, $source, $summary, $payload, $provenance);
             """;
         command.Parameters.AddWithValue("$id", id.ToString("N"));
         command.Parameters.AddWithValue("$kind", (int)draft.Kind);
@@ -64,6 +64,7 @@ public sealed class SqliteMemoryStore : IDisposable
         command.Parameters.AddWithValue("$source", draft.Source);
         command.Parameters.AddWithValue("$summary", summary);
         command.Parameters.AddWithValue("$payload", payload);
+        command.Parameters.AddWithValue("$provenance", (int)draft.Provenance);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
         var trim = connection.CreateCommand();
@@ -89,7 +90,8 @@ public sealed class SqliteMemoryStore : IDisposable
             draft.Sensitivity,
             draft.Source,
             draft.Summary,
-            draft.Payload);
+            draft.Payload,
+            draft.Provenance);
     }
 
     public async Task<MemoryRecord?> GetAsync(
@@ -102,7 +104,7 @@ public sealed class SqliteMemoryStore : IDisposable
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher
+            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance
             FROM memories
             WHERE id = $id AND (expires_at IS NULL OR expires_at > $now);
             """;
@@ -131,7 +133,7 @@ public sealed class SqliteMemoryStore : IDisposable
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher
+            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance
             FROM memories
             WHERE (expires_at IS NULL OR expires_at > $now)
               AND ($kind IS NULL OR kind = $kind)
@@ -183,7 +185,8 @@ public sealed class SqliteMemoryStore : IDisposable
                 maximumSensitivity: DataSensitivity.Low)
             .ConfigureAwait(false);
         return candidates
-            .Select(record => new MemorySearchHit(record, Score(query, queryTokens, record.Summary)))
+            .Where(record => record.Provenance != MemoryProvenance.Hypothetical)
+            .Select(record => CreateActivation(query, queryTokens, record, now))
             .Where(hit => hit.Score >= 0.16)
             .OrderByDescending(hit => hit.Score)
             .ThenByDescending(hit => hit.Record.UpdatedAt)
@@ -237,7 +240,8 @@ public sealed class SqliteMemoryStore : IDisposable
                 sensitivity = $sensitivity,
                 source = $source,
                 summary_cipher = $summary,
-                payload_cipher = $payload
+                payload_cipher = $payload,
+                provenance = $provenance
             WHERE id = $id AND (expires_at IS NULL OR expires_at > $now);
             """;
         command.Parameters.AddWithValue("$id", id.ToString("N"));
@@ -250,6 +254,7 @@ public sealed class SqliteMemoryStore : IDisposable
         command.Parameters.AddWithValue("$source", draft.Source);
         command.Parameters.AddWithValue("$summary", summary);
         command.Parameters.AddWithValue("$payload", payload);
+        command.Parameters.AddWithValue("$provenance", (int)draft.Provenance);
         command.Parameters.AddWithValue("$now", now.ToString("O", CultureInfo.InvariantCulture));
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
     }
@@ -321,12 +326,30 @@ public sealed class SqliteMemoryStore : IDisposable
                     sensitivity INTEGER NOT NULL,
                     source TEXT NOT NULL,
                     summary_cipher TEXT NOT NULL,
-                    payload_cipher TEXT NOT NULL
+                    payload_cipher TEXT NOT NULL,
+                    provenance INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE INDEX IF NOT EXISTS idx_memories_expiry ON memories(expires_at);
                 CREATE INDEX IF NOT EXISTS idx_memories_kind_updated ON memories(kind, updated_at DESC);
                 """;
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+            var columns = connection.CreateCommand();
+            columns.CommandText = "PRAGMA table_info(memories);";
+            var columnNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using (var reader = await columns.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+            {
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    columnNames.Add(reader.GetString(1));
+                }
+            }
+            if (!columnNames.Contains("provenance"))
+            {
+                var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE memories ADD COLUMN provenance INTEGER NOT NULL DEFAULT 0;";
+                await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
             _initialized = true;
         }
         finally
@@ -359,7 +382,8 @@ public sealed class SqliteMemoryStore : IDisposable
             (DataSensitivity)reader.GetInt32(5),
             reader.GetString(6),
             _protector.Unprotect(reader.GetString(7), $"{id:N}:summary"),
-            _protector.Unprotect(reader.GetString(8), $"{id:N}:payload"));
+            _protector.Unprotect(reader.GetString(8), $"{id:N}:payload"),
+            (MemoryProvenance)reader.GetInt32(9));
     }
 
     private static DateTimeOffset? DefaultExpiry(MemoryKind kind, DateTimeOffset now) => kind switch
@@ -369,21 +393,58 @@ public sealed class SqliteMemoryStore : IDisposable
         _ => null
     };
 
-    private static double Score(string query, HashSet<string> queryTokens, string summary)
+    private static MemorySearchHit CreateActivation(
+        string query,
+        HashSet<string> queryTokens,
+        MemoryRecord record,
+        DateTimeOffset now)
     {
-        var candidateTokens = Tokenize(summary);
+        var candidateTokens = Tokenize(record.Summary);
         if (candidateTokens.Count == 0)
         {
-            return 0;
+            return new MemorySearchHit(record, 0, 0, 0, "no_lexical_overlap");
         }
 
         var overlap = queryTokens.Count(candidateTokens.Contains);
-        var lexicalScore = overlap / Math.Sqrt(queryTokens.Count * candidateTokens.Count);
-        var phraseBoost = query.Contains(summary, StringComparison.OrdinalIgnoreCase) ||
-                          summary.Contains(query, StringComparison.OrdinalIgnoreCase)
+        var lexicalRelevance = overlap / Math.Sqrt(queryTokens.Count * candidateTokens.Count);
+        var phraseBoost = query.Contains(record.Summary, StringComparison.OrdinalIgnoreCase) ||
+                          record.Summary.Contains(query, StringComparison.OrdinalIgnoreCase)
             ? 0.25
             : 0;
-        return Math.Min(1, lexicalScore + phraseBoost);
+        lexicalRelevance = Math.Min(1, lexicalRelevance + phraseBoost);
+
+        var ageDays = Math.Max(0, (now - record.UpdatedAt).TotalDays);
+        var halfLifeDays = record.Kind switch
+        {
+            MemoryKind.Working => 0.5,
+            MemoryKind.Episodic => 14.0,
+            _ => double.PositiveInfinity
+        };
+        var recencyWeight = double.IsPositiveInfinity(halfLifeDays)
+            ? 1
+            : Math.Pow(0.5, ageDays / halfLifeDays);
+        var kindWeight = record.Kind switch
+        {
+            MemoryKind.Profile => 1.05,
+            MemoryKind.Semantic or MemoryKind.Relationship => 1.03,
+            MemoryKind.Working => 0.85,
+            _ => 1.0
+        };
+        var provenanceWeight = record.Provenance switch
+        {
+            MemoryProvenance.UserConfirmed => 1.08,
+            MemoryProvenance.ImportedKnowledge => 0.9,
+            _ => 1.0
+        };
+        var activatedScore = Math.Min(1, lexicalRelevance * (0.65 + 0.35 * recencyWeight) * kindWeight * provenanceWeight);
+        var reason = overlap == 0 && phraseBoost > 0
+            ? "phrase_match"
+            : record.Provenance == MemoryProvenance.UserConfirmed
+                ? "lexical_match_user_confirmed"
+                : record.Kind is MemoryKind.Working or MemoryKind.Episodic
+                    ? "lexical_match_with_recency"
+                    : "lexical_match_stable_fact";
+        return new MemorySearchHit(record, activatedScore, lexicalRelevance, recencyWeight, reason);
     }
 
     private static HashSet<string> Tokenize(string text)
@@ -453,7 +514,8 @@ public sealed class SqliteMemoryStore : IDisposable
     private static void ValidateDraft(MemoryDraft draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
-        if (string.IsNullOrWhiteSpace(draft.Summary) || draft.Summary.Length > 8192 ||
+        if (!Enum.IsDefined(draft.Provenance) ||
+            string.IsNullOrWhiteSpace(draft.Summary) || draft.Summary.Length > 8192 ||
             draft.Payload.Length > 65_536 ||
             string.IsNullOrWhiteSpace(draft.Source) || draft.Source.Length > 128)
         {

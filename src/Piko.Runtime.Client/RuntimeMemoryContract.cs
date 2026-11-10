@@ -6,7 +6,8 @@ public sealed record RuntimeMemoryItem(
     DateTimeOffset CreatedAt,
     DateTimeOffset? ExpiresAt,
     string Sensitivity,
-    string Summary);
+    string Summary,
+    string Provenance = "ObservedEvent");
 
 public sealed record RuntimeMemoryListResponse(
     bool Available,

@@ -284,7 +284,15 @@ public sealed class PikoRuntimeHost
                     recalledMemories = recalledMemories.Select(hit => new
                     {
                         kind = hit.Record.Kind.ToString(),
+                        provenance = hit.Record.Provenance.ToString(),
                         recordedAt = hit.Record.CreatedAt,
+                        activation = new
+                        {
+                            score = Math.Round(hit.Score, 3),
+                            relevance = Math.Round(hit.LexicalRelevance, 3),
+                            recency = Math.Round(hit.RecencyWeight, 3),
+                            reason = hit.ActivationReason
+                        },
                         summary = hit.Record.Summary.Length <= 400
                             ? hit.Record.Summary
                             : hit.Record.Summary[..400]
@@ -450,7 +458,8 @@ public sealed class PikoRuntimeHost
                         summary,
                         summary,
                         DataSensitivity.Low,
-                        "user.confirmed"),
+                        "user.confirmed",
+                        Provenance: MemoryProvenance.UserConfirmed),
                     DateTimeOffset.UtcNow,
                     requestCancellation).ConfigureAwait(false);
                 return RuntimeResponse.Ok(request.RequestId, "memory.added", new { added = true });
@@ -486,7 +495,8 @@ public sealed class PikoRuntimeHost
                     memoryRequest.Summary.Trim(),
                     memoryRequest.Summary.Trim(),
                     DataSensitivity.Low,
-                    "user.confirmed");
+                    "user.confirmed",
+                    Provenance: MemoryProvenance.UserConfirmed);
                 var updated = await activeMemoryStore.UpdateAsync(memoryId, draft, DateTimeOffset.UtcNow, requestCancellation)
                     .ConfigureAwait(false);
                 return RuntimeResponse.Ok(request.RequestId, "memory.updated-one", new { updated });
@@ -548,7 +558,8 @@ public sealed class PikoRuntimeHost
                             memory.CreatedAt,
                             memory.ExpiresAt,
                             memory.Sensitivity.ToString(),
-                            memory.Summary)).ToArray()));
+                            memory.Summary,
+                            memory.Provenance.ToString())).ToArray()));
             }
 
             if (request.Type == "memory.delete-all")

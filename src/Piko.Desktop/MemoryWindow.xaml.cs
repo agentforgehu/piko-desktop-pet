@@ -5,7 +5,7 @@ namespace Piko.Desktop;
 
 public partial class MemoryWindow : Window
 {
-    private sealed record MemoryListItem(string Id, string Created, string Kind, string Sensitivity, string Summary);
+    private sealed record MemoryListItem(string Id, string Created, string Kind, string Sensitivity, string Provenance, string Summary);
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private readonly RuntimeProcessManager _runtime;
@@ -160,6 +160,7 @@ public partial class MemoryWindow : Window
                 item.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
                 item.Kind,
                 item.Sensitivity,
+                item.Provenance,
                 item.Summary)).ToArray();
             StatusText.Text = $"共 {result.Items.Count} 条。用户添加的偏好/语义记忆默认不过期；事件记忆按类型到期。";
         }

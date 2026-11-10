@@ -38,7 +38,7 @@ VS Code Extension ── authenticated local IPC ── Piko.Runtime
 - PetMind 情境评价与短期 Homeostasis 状态（valence、arousal、energy、stress load、curiosity drive、reward expectation、关系熟悉度）；
 - 只读的离线 ImprovementGate，校验 holdout、质量、成本、安全、隐私和回归证据；
 - SQLite/加密字段记忆存储；
-- 用户启用记忆时，Agent 规划前从近期有效记忆中检索最多五条低敏摘要；高敏内容不解密进入检索结果；
+- 用户启用记忆时，Agent 规划前按相关性、类型、来源和时间衰减激活最多五条低敏摘要；假设来源及高敏内容不进入检索结果；
 - 本地 IPC 身份校验、速率限制和消息版本协商；
 - ESP32 状态投影和连接管理；
 - 默认不联网。

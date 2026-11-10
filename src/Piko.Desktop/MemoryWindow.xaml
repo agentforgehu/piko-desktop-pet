@@ -28,7 +28,8 @@
                     <GridViewColumn Header="时间" Width="132" DisplayMemberBinding="{Binding Created}" />
                     <GridViewColumn Header="类型" Width="72" DisplayMemberBinding="{Binding Kind}" />
                     <GridViewColumn Header="敏感度" Width="70" DisplayMemberBinding="{Binding Sensitivity}" />
-                    <GridViewColumn Header="摘要" Width="282" DisplayMemberBinding="{Binding Summary}" />
+                    <GridViewColumn Header="来源类型" Width="104" DisplayMemberBinding="{Binding Provenance}" />
+                    <GridViewColumn Header="摘要" Width="178" DisplayMemberBinding="{Binding Summary}" />
                 </GridView>
             </ListView.View>
         </ListView>
