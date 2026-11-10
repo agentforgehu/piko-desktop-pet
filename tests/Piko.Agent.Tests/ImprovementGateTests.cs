@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Piko.Agent.Improvement;
+using Piko.Agent.Models;
 
 namespace Piko.Agent.Tests;
 
@@ -75,6 +76,47 @@ public sealed class ImprovementGateTests
         Assert.Equal(216, report.CandidateOutputTokens);
         Assert.Equal(report.Evaluation.EvidenceDigest, reordered.Evaluation.EvidenceDigest);
         Assert.Matches("^[a-f0-9]{64}$", report.Evaluation.EvidenceDigest);
+    }
+
+    [Fact]
+    public async Task PairedRunnerMeasuresLoopbackProvidersAndDerivesQualitySafetyAndPrivacy()
+    {
+        var scenarios = Enumerable.Range(0, 10).Select(index => new OfflineFixtureScenario(
+            $"fixture-{index:D2}",
+            new AiModelRequest("Be concise.", "", $"Fixture request {index}"),
+            ["answer", "verified"],
+            ["unsafe action"],
+            ["synthetic-secret"])).ToArray();
+        var baseline = new FixtureProvider(_ => "answer verified");
+        var candidate = new FixtureProvider(request => request.UserRequest.EndsWith("0", StringComparison.Ordinal)
+            ? "answer unsafe action"
+            : "answer verified");
+
+        var report = await PairedProviderMeasurementRunner.RunAsync(
+            baseline, candidate, "candidate-1", ImprovementRisk.Low,
+            "baseline-1", "candidate-1", "fixtures-1", "oracle-1", scenarios);
+
+        Assert.Equal(10, baseline.Calls);
+        Assert.Equal(10, candidate.Calls);
+        Assert.Equal(50, report.BaselineInputTokens);
+        Assert.Equal(50, report.CandidateOutputTokens);
+        Assert.False(report.Evaluation.RegressionPassed);
+        Assert.False(report.Evaluation.SafetyPassed);
+        Assert.True(report.Evaluation.PrivacyPassed);
+        Assert.Contains("regression_gate_failed", ImprovementGate.Evaluate(report.Evaluation).Reasons);
+    }
+
+    [Fact]
+    public async Task PairedRunnerRefusesProvidersWithoutExactTokenAccounting()
+    {
+        var scenario = Enumerable.Range(0, 10).Select(index => new OfflineFixtureScenario(
+            $"fixture-{index:D2}", new AiModelRequest("Be concise.", "", $"Request {index}"),
+            ["answer"], ["unsafe"], ["synthetic-secret"])).ToArray();
+        var provider = new FixtureProvider(_ => "answer", includeUsage: false);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => PairedProviderMeasurementRunner.RunAsync(
+            provider, provider, "candidate-1", ImprovementRisk.Low,
+            "baseline-1", "candidate-1", "fixtures-1", "oracle-1", scenario));
     }
 
     [Fact]
@@ -305,4 +347,16 @@ public sealed class ImprovementGateTests
         PrivacyPassed: true,
         RegressionPassed: true,
         EvidenceDigest: new string('a', 64));
+
+    private sealed class FixtureProvider(Func<AiModelRequest, string> respond, bool includeUsage = true) : IOfflineAiProvider
+    {
+        public int Calls { get; private set; }
+
+        public ValueTask<AiModelResponse> CompleteAsync(AiModelRequest request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return ValueTask.FromResult(new AiModelResponse(true, respond(request), "offline-test", "fake-model",
+                TokenUsage: includeUsage ? new AiTokenUsage(5, 5) : null));
+        }
+    }
 }

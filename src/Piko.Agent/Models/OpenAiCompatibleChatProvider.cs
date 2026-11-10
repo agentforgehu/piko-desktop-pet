@@ -30,7 +30,7 @@ public sealed record OpenAiCompatibleChatOptions
     }
 }
 
-public sealed class OpenAiCompatibleChatProvider : IAiProvider
+public sealed class OpenAiCompatibleChatProvider : IOfflineAiProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly HttpClient _httpClient;
@@ -81,9 +81,10 @@ public sealed class OpenAiCompatibleChatProvider : IAiProvider
 
             using var document = JsonDocument.Parse(json);
             var content = document.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+            var usage = TryReadUsage(document.RootElement);
             return string.IsNullOrWhiteSpace(content)
                 ? new AiModelResponse(false, string.Empty, "local-openai-compatible", _options.Model, "missing_output_text")
-                : new AiModelResponse(true, content, "local-openai-compatible", _options.Model);
+                : new AiModelResponse(true, content, "local-openai-compatible", _options.Model, TokenUsage: usage);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -93,6 +94,18 @@ public sealed class OpenAiCompatibleChatProvider : IAiProvider
         {
             return new AiModelResponse(false, string.Empty, "local-openai-compatible", _options.Model, "provider_error");
         }
+    }
+
+    private static AiTokenUsage? TryReadUsage(JsonElement root)
+    {
+        if (!root.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object ||
+            !usage.TryGetProperty("prompt_tokens", out var input) || !input.TryGetInt32(out var inputTokens) ||
+            !usage.TryGetProperty("completion_tokens", out var output) || !output.TryGetInt32(out var outputTokens) ||
+            inputTokens < 0 || outputTokens < 0)
+        {
+            return null;
+        }
+        return new AiTokenUsage(inputTokens, outputTokens);
     }
 
     private static async Task<string> ReadLimitedUtf8Async(HttpContent content, int maximumBytes, CancellationToken cancellationToken)

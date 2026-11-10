@@ -190,9 +190,10 @@ public sealed class OpenAiResponsesProvider : IAiProvider
 
             using var document = JsonDocument.Parse(json);
             var outputText = ExtractOutputText(document.RootElement);
+            var usage = TryReadUsage(document.RootElement);
             return string.IsNullOrWhiteSpace(outputText)
                 ? new AiModelResponse(false, string.Empty, "openai-responses", _options.Model, "missing_output_text")
-                : new AiModelResponse(true, outputText, "openai-responses", _options.Model);
+                : new AiModelResponse(true, outputText, "openai-responses", _options.Model, TokenUsage: usage);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -202,6 +203,18 @@ public sealed class OpenAiResponsesProvider : IAiProvider
         {
             return new AiModelResponse(false, string.Empty, "openai-responses", _options.Model, "provider_error");
         }
+    }
+
+    private static AiTokenUsage? TryReadUsage(JsonElement root)
+    {
+        if (!root.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object ||
+            !usage.TryGetProperty("input_tokens", out var input) || !input.TryGetInt32(out var inputTokens) ||
+            !usage.TryGetProperty("output_tokens", out var output) || !output.TryGetInt32(out var outputTokens) ||
+            inputTokens < 0 || outputTokens < 0)
+        {
+            return null;
+        }
+        return new AiTokenUsage(inputTokens, outputTokens);
     }
 
     private static void ValidateRequest(AiModelRequest request)

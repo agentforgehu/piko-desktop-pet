@@ -11,11 +11,19 @@ public sealed record AiModelResponse(
     string Text,
     string Provider,
     string Model,
-    string? Error = null);
+    string? Error = null,
+    AiTokenUsage? TokenUsage = null);
+
+public sealed record AiTokenUsage(int InputTokens, int OutputTokens);
 
 public interface IAiProvider
 {
     ValueTask<AiModelResponse> CompleteAsync(AiModelRequest request, CancellationToken cancellationToken);
+}
+
+/// <summary>A provider guaranteed to address a local runtime, suitable for private offline evaluation.</summary>
+public interface IOfflineAiProvider : IAiProvider
+{
 }
 
 public sealed class DisabledAiProvider : IAiProvider

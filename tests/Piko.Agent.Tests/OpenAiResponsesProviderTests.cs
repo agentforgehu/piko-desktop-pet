@@ -29,6 +29,7 @@ public sealed class OpenAiResponsesProviderTests
         const string plan = "{\"message\":\"I can inspect the status.\",\"toolCalls\":[]}";
         var responseJson = JsonSerializer.Serialize(new
         {
+            usage = new { input_tokens = 12, output_tokens = 7 },
             output = new[]
             {
                 new
@@ -50,6 +51,7 @@ public sealed class OpenAiResponsesProviderTests
 
         Assert.True(result.Available);
         Assert.Equal(plan, result.Text);
+        Assert.Equal(new AiTokenUsage(12, 7), result.TokenUsage);
         Assert.Equal("Bearer", handler.AuthorizationScheme);
         Assert.Equal("secret-test-key", handler.AuthorizationParameter);
         using var body = JsonDocument.Parse(handler.Body!);
@@ -77,6 +79,7 @@ public sealed class OpenAiResponsesProviderTests
         const string plan = "{\"message\":\"主人，我在。\",\"emotion\":\"happy\",\"action\":\"greet\",\"toolCalls\":[]}";
         var responseJson = JsonSerializer.Serialize(new
         {
+            usage = new { prompt_tokens = 9, completion_tokens = 4 },
             choices = new[] { new { message = new { content = plan } } }
         });
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
@@ -95,6 +98,7 @@ public sealed class OpenAiResponsesProviderTests
 
         Assert.True(result.Available);
         Assert.Equal(plan, result.Text);
+        Assert.Equal(new AiTokenUsage(9, 4), result.TokenUsage);
         Assert.Null(handler.AuthorizationScheme);
         using var body = JsonDocument.Parse(handler.Body!);
         Assert.Equal("piko-local", body.RootElement.GetProperty("model").GetString());
