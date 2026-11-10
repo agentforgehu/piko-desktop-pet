@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
+using Piko.Cognition.Memory;
 using Piko.Context.Events;
 using Piko.Memory.Security;
 
@@ -7,6 +8,68 @@ namespace Piko.Memory.Tests;
 
 public sealed class MemoryStoreTests
 {
+    [Fact]
+    public async Task HostNeutralMemoryContractUsesEncryptedStoreAndPreservesConfidence()
+    {
+        var (root, _, storage) = CreateStore();
+        try
+        {
+            ICognitiveMemoryStore memory = new CognitiveMemoryStoreAdapter(storage);
+            var now = DateTimeOffset.UtcNow;
+            var saved = await memory.AddAsync(new CognitiveMemoryDraft(
+                MemoryCategory.Profile,
+                "Prefers concise Chinese responses",
+                "Use concise Chinese unless asked otherwise",
+                MemorySensitivity.Low,
+                "user.confirmed",
+                Confidence: 0.93,
+                EvidenceSource: MemoryEvidenceSource.UserConfirmed,
+                FactKey: "response_style",
+                FactValue: "concise_chinese"), now);
+            var expired = await memory.AddAsync(new CognitiveMemoryDraft(
+                MemoryCategory.Episodic,
+                "Old temporary note",
+                "retained only for user export",
+                MemorySensitivity.Low,
+                "test",
+                Confidence: 0.2,
+                ExpiresAt: now.AddDays(-1)), now);
+            await memory.AddAsync(new CognitiveMemoryDraft(
+                MemoryCategory.Profile,
+                "private local-only note",
+                "sensitive synthetic test value",
+                MemorySensitivity.High,
+                "user.confirmed",
+                Confidence: 0.8,
+                EvidenceSource: MemoryEvidenceSource.UserConfirmed), now);
+
+            var hits = await memory.RecallAsync(new CognitiveMemoryRecallRequest(
+                "Chinese responses", now, Category: MemoryCategory.Profile));
+            var hit = Assert.Single(hits);
+            var exported = await memory.ExportAsync(now);
+
+            Assert.Equal(saved.Id, hit.Record.Id);
+            Assert.Equal(0.93, hit.Record.Confidence);
+            Assert.Equal(MemoryEvidenceSource.UserConfirmed, hit.Record.EvidenceSource);
+            Assert.Equal("response_style", hit.Record.FactKey);
+            Assert.Equal("concise_chinese", hit.Record.FactValue);
+            Assert.Equal("Prefers concise Chinese responses", hit.Record.Summary);
+            Assert.DoesNotContain(hits, item => item.Record.Id == expired.Id);
+            Assert.Contains(exported, item => item.Id == expired.Id && item.Confidence == 0.2);
+            Assert.Empty(await memory.RecallAsync(new CognitiveMemoryRecallRequest("private local-only note", now)));
+            Assert.Single(await memory.RecallAsync(new CognitiveMemoryRecallRequest(
+                "private local-only note", now, MaximumSensitivity: MemorySensitivity.High)));
+
+            Assert.True(await memory.DeleteAsync(saved.Id));
+            Assert.Null(await memory.GetAsync(saved.Id, now));
+        }
+        finally
+        {
+            storage.Dispose();
+            Directory.Delete(root, true);
+        }
+    }
+
     [Fact]
     public void AesGcmProtectorBindsCiphertextToPurpose()
     {
@@ -366,6 +429,7 @@ public sealed class MemoryStoreTests
             Assert.Null(loaded.ValidUntil);
             Assert.Null(loaded.FactKey);
             Assert.Null(loaded.FactValue);
+            Assert.Equal(0.5, loaded.Confidence);
             Assert.Equal("legacy preference", loaded.Summary);
         }
         finally

@@ -34,7 +34,7 @@ Piko.Cognition (pure reusable core)
 Storage adapters | Model adapters | Evaluation and improvement tools
 ```
 
-`src/Piko.Cognition` is the first extracted module. `Piko.Memory` is currently a separate local encrypted store and is a candidate adapter/core dependency after its API and data contracts are made host-neutral. `Piko.World` is a Piko desktop adapter, not the cognitive system's source of truth.
+`src/Piko.Cognition` is the host-neutral contract and policy layer. `Piko.Memory` now provides a SQLite adapter implementing the cognition memory contract, including confidence persistence and sensitivity-bounded recall. Its storage engine still uses legacy internal record types, and a second non-desktop adapter is still needed to prove cross-host reuse. `Piko.World` is a Piko desktop adapter, not the cognitive system's source of truth.
 
 ## 分阶段验收
 
@@ -48,7 +48,7 @@ Storage adapters | Model adapters | Evaluation and improvement tools
 ### C1：记忆核心
 
 - 定义跨宿主记忆记录、来源、置信度、敏感级别、有效时间和冲突状态契约。
-- 支持显式确认、引用来源、删除/导出、去重与版本保留。
+- 支持显式确认、引用来源、置信度、删除/导出、去重与版本保留。
 - 召回可解释、可预算、可按敏感级别过滤；对复合事实拆分和语义不确定性有显式拒答/复核路径。
 
 ### C2：情绪、动机与人格闭环
@@ -76,4 +76,4 @@ Storage adapters | Model adapters | Evaluation and improvement tools
 
 ## 当前实现状态
 
-截至 2026-11-10，`Piko.Cognition` 已承载首批通用情绪/稳态更新、人格偏好类型和行为调节建议；`Piko.World` 的 `PetMind` 与桌宠行为策略作为适配层调用它。加密记忆仍由 `Piko.Memory` 提供，当前 schema 和 UI 流程还需要继续中性化。离线改进评测是本地模型配对评测原型，并非代码级自我进化系统。当前认知核心仍未达到 C1–C5 的验收要求。
+截至 2026-11-10，`Piko.Cognition` 已承载首批通用情绪/稳态更新、人格偏好、行为调节建议及记忆合同；`Piko.World` 的 `PetMind` 与桌宠行为策略作为适配层调用它。`Piko.Memory` 的 SQLite 适配器实现了该记忆合同，并兼容迁移历史记录的置信度默认值。自由文本冲突判定、复合事实、导出和第二宿主验收仍未完成。离线改进评测是本地模型配对评测原型，并非代码级自我进化系统。当前认知核心仍未达到 C1–C5 的验收要求。

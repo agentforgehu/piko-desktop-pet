@@ -13,7 +13,8 @@ public sealed record MemoryDraft(
     DateTimeOffset? ValidFrom = null,
     DateTimeOffset? ValidUntil = null,
     string? FactKey = null,
-    string? FactValue = null);
+    string? FactValue = null,
+    double Confidence = 0.5);
 
 public sealed record MemoryRecord(
     Guid Id,
@@ -30,7 +31,8 @@ public sealed record MemoryRecord(
     DateTimeOffset? ValidFrom = null,
     DateTimeOffset? ValidUntil = null,
     string? FactKey = null,
-    string? FactValue = null);
+    string? FactValue = null,
+    double Confidence = 0.5);
 
 public sealed record MemorySearchHit(
     MemoryRecord Record,

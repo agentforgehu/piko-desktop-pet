@@ -51,9 +51,9 @@ public sealed class SqliteMemoryStore : IDisposable
         command.Transaction = (SqliteTransaction)transaction;
         command.CommandText = """
             INSERT INTO memories
-                (id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by, valid_from, valid_until, fact_key_cipher, fact_value_cipher)
+                (id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by, valid_from, valid_until, fact_key_cipher, fact_value_cipher, confidence)
             VALUES
-                ($id, $kind, $created, $updated, $expires, $sensitivity, $source, $summary, $payload, $provenance, NULL, $validFrom, $validUntil, $factKey, $factValue);
+                ($id, $kind, $created, $updated, $expires, $sensitivity, $source, $summary, $payload, $provenance, NULL, $validFrom, $validUntil, $factKey, $factValue, $confidence);
             """;
         command.Parameters.AddWithValue("$id", id.ToString("N"));
         command.Parameters.AddWithValue("$kind", (int)draft.Kind);
@@ -71,6 +71,7 @@ public sealed class SqliteMemoryStore : IDisposable
         command.Parameters.AddWithValue("$validUntil", ToDbTimestamp(draft.ValidUntil));
         command.Parameters.AddWithValue("$factKey", factKey);
         command.Parameters.AddWithValue("$factValue", factValue);
+        command.Parameters.AddWithValue("$confidence", draft.Confidence);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
         await using var trim = connection.CreateCommand();
@@ -101,7 +102,8 @@ public sealed class SqliteMemoryStore : IDisposable
             ValidFrom: draft.ValidFrom,
             ValidUntil: draft.ValidUntil,
             FactKey: draft.FactKey,
-            FactValue: draft.FactValue);
+            FactValue: draft.FactValue,
+            Confidence: draft.Confidence);
     }
 
     /// <summary>Stores a user-confirmed replacement while retaining the prior version for audit and recovery.</summary>
@@ -161,8 +163,8 @@ public sealed class SqliteMemoryStore : IDisposable
         insert.Transaction = (SqliteTransaction)transaction;
         insert.CommandText = """
             INSERT INTO memories
-                (id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by, valid_from, valid_until, fact_key_cipher, fact_value_cipher)
-            VALUES ($id, $kind, $created, $updated, $expires, $sensitivity, $source, $summary, $payload, $provenance, NULL, $validFrom, $validUntil, $factKey, $factValue);
+                (id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by, valid_from, valid_until, fact_key_cipher, fact_value_cipher, confidence)
+            VALUES ($id, $kind, $created, $updated, $expires, $sensitivity, $source, $summary, $payload, $provenance, NULL, $validFrom, $validUntil, $factKey, $factValue, $confidence);
             """;
         insert.Parameters.AddWithValue("$id", id.ToString("N"));
         insert.Parameters.AddWithValue("$kind", (int)replacement.Kind);
@@ -178,12 +180,13 @@ public sealed class SqliteMemoryStore : IDisposable
         insert.Parameters.AddWithValue("$validUntil", ToDbTimestamp(replacement.ValidUntil));
         insert.Parameters.AddWithValue("$factKey", factKey);
         insert.Parameters.AddWithValue("$factValue", factValue);
+        insert.Parameters.AddWithValue("$confidence", replacement.Confidence);
         await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new MemoryRecord(id, replacement.Kind, now, now, expiresAt, replacement.Sensitivity,
             replacement.Source, replacement.Summary, replacement.Payload, replacement.Provenance,
             ValidFrom: replacement.ValidFrom, ValidUntil: replacement.ValidUntil,
-            FactKey: replacement.FactKey, FactValue: replacement.FactValue);
+            FactKey: replacement.FactKey, FactValue: replacement.FactValue, Confidence: replacement.Confidence);
     }
 
     public async Task<MemoryRecord?> GetAsync(
@@ -196,7 +199,7 @@ public sealed class SqliteMemoryStore : IDisposable
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by, valid_from, valid_until, fact_key_cipher, fact_value_cipher
+            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by, valid_from, valid_until, fact_key_cipher, fact_value_cipher, confidence
             FROM memories
             WHERE id = $id AND (expires_at IS NULL OR expires_at > $now);
             """;
@@ -215,7 +218,8 @@ public sealed class SqliteMemoryStore : IDisposable
         CancellationToken cancellationToken = default,
         DataSensitivity? maximumSensitivity = null,
         bool includeSuperseded = true,
-        bool onlyCurrentlyValid = false)
+        bool onlyCurrentlyValid = false,
+        bool includeExpired = false)
     {
         ThrowIfDisposed();
         if (limit is < 1 or > MaximumRecords)
@@ -227,9 +231,9 @@ public sealed class SqliteMemoryStore : IDisposable
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by, valid_from, valid_until, fact_key_cipher, fact_value_cipher
+            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by, valid_from, valid_until, fact_key_cipher, fact_value_cipher, confidence
             FROM memories
-            WHERE (expires_at IS NULL OR expires_at > $now)
+            WHERE ($includeExpired = 1 OR expires_at IS NULL OR expires_at > $now)
               AND ($onlyCurrentlyValid = 0 OR (valid_from IS NULL OR valid_from <= $now))
               AND ($onlyCurrentlyValid = 0 OR (valid_until IS NULL OR valid_until > $now))
               AND ($kind IS NULL OR kind = $kind)
@@ -239,6 +243,7 @@ public sealed class SqliteMemoryStore : IDisposable
             LIMIT $limit;
             """;
         command.Parameters.AddWithValue("$now", now.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$includeExpired", includeExpired ? 1 : 0);
         command.Parameters.AddWithValue("$kind", kind is null ? DBNull.Value : (int)kind.Value);
         command.Parameters.AddWithValue("$maximumSensitivity", maximumSensitivity is null
             ? DBNull.Value
@@ -260,7 +265,12 @@ public sealed class SqliteMemoryStore : IDisposable
         string query,
         DateTimeOffset now,
         int limit = 5,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        MemoryKind? kind = null,
+        DataSensitivity maximumSensitivity = DataSensitivity.Low,
+        bool includeHypothetical = false,
+        bool includeSuperseded = false,
+        bool onlyCurrentlyValid = true)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(query);
@@ -279,14 +289,15 @@ public sealed class SqliteMemoryStore : IDisposable
         // and never expose medium/high sensitivity records to the model by default.
         var candidates = await ListAsync(
                 now,
+                kind,
                 limit: 500,
                 cancellationToken: cancellationToken,
-                maximumSensitivity: DataSensitivity.Low,
-                includeSuperseded: false,
-                onlyCurrentlyValid: true)
+                maximumSensitivity: maximumSensitivity,
+                includeSuperseded: includeSuperseded,
+                onlyCurrentlyValid: onlyCurrentlyValid)
             .ConfigureAwait(false);
         return candidates
-            .Where(record => record.Provenance != MemoryProvenance.Hypothetical)
+            .Where(record => includeHypothetical || record.Provenance != MemoryProvenance.Hypothetical)
             .Select(record => CreateActivation(query, queryTokens, record, now))
             .Where(hit => hit.Score >= 0.16)
             .OrderByDescending(hit => hit.Score)
@@ -405,6 +416,7 @@ public sealed class SqliteMemoryStore : IDisposable
                 summary_cipher = $summary,
                 payload_cipher = $payload,
                 provenance = $provenance,
+                confidence = $confidence,
                 valid_from = $validFrom,
                 valid_until = $validUntil,
                 fact_key_cipher = $factKey,
@@ -428,6 +440,7 @@ public sealed class SqliteMemoryStore : IDisposable
         command.Parameters.AddWithValue("$validUntil", ToDbTimestamp(draft.ValidUntil));
         command.Parameters.AddWithValue("$factKey", factKey);
         command.Parameters.AddWithValue("$factValue", factValue);
+        command.Parameters.AddWithValue("$confidence", draft.Confidence);
         command.Parameters.AddWithValue("$now", now.ToString("O", CultureInfo.InvariantCulture));
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
     }
@@ -505,7 +518,8 @@ public sealed class SqliteMemoryStore : IDisposable
                     valid_from TEXT NULL,
                     valid_until TEXT NULL,
                     fact_key_cipher TEXT NULL,
-                    fact_value_cipher TEXT NULL
+                    fact_value_cipher TEXT NULL,
+                    confidence REAL NOT NULL DEFAULT 0.5
                 );
                 CREATE INDEX IF NOT EXISTS idx_memories_expiry ON memories(expires_at);
                 CREATE INDEX IF NOT EXISTS idx_memories_kind_updated ON memories(kind, updated_at DESC);
@@ -558,6 +572,12 @@ public sealed class SqliteMemoryStore : IDisposable
                 migrate.CommandText = "ALTER TABLE memories ADD COLUMN fact_value_cipher TEXT NULL;";
                 await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
+            if (!columnNames.Contains("confidence"))
+            {
+                await using var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE memories ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5;";
+                await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
             _initialized = true;
         }
         finally
@@ -596,7 +616,8 @@ public sealed class SqliteMemoryStore : IDisposable
             reader.IsDBNull(11) ? null : DateTimeOffset.Parse(reader.GetString(11), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
             reader.IsDBNull(12) ? null : DateTimeOffset.Parse(reader.GetString(12), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
             reader.IsDBNull(13) ? null : _protector.Unprotect(reader.GetString(13), $"{id:N}:fact-key"),
-            reader.IsDBNull(14) ? null : _protector.Unprotect(reader.GetString(14), $"{id:N}:fact-value"));
+            reader.IsDBNull(14) ? null : _protector.Unprotect(reader.GetString(14), $"{id:N}:fact-value"),
+            reader.GetDouble(15));
     }
 
     private object ProtectOptionalFact(string? value, string purpose) =>
@@ -763,7 +784,8 @@ public sealed class SqliteMemoryStore : IDisposable
     private static void ValidateDraft(MemoryDraft draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
-        if (!Enum.IsDefined(draft.Provenance) ||
+        if (!Enum.IsDefined(draft.Kind) || !Enum.IsDefined(draft.Sensitivity) || !Enum.IsDefined(draft.Provenance) ||
+            !double.IsFinite(draft.Confidence) || draft.Confidence is < 0 or > 1 ||
             (draft.ValidFrom is { } validFrom && draft.ValidUntil is { } validUntil && validUntil <= validFrom) ||
             (draft.FactKey is not null && draft.FactKey != draft.FactKey.Trim()) ||
             (draft.FactValue is not null && draft.FactValue != draft.FactValue.Trim()) ||
