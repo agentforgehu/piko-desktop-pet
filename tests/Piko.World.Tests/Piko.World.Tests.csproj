@@ -14,5 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Piko.World\Piko.World.csproj" />
+    <ProjectReference Include="..\..\src\Piko.Cognition\Piko.Cognition.csproj" />
   </ItemGroup>
 </Project>

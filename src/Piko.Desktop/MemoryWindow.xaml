@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Piko 本地记忆"
         Width="620"
-        Height="500"
+        Height="610"
         MinWidth="520"
-        MinHeight="400"
+        MinHeight="500"
         WindowStartupLocation="CenterScreen"
         Background="#F7F4EE"
         FontFamily="Microsoft YaHei UI">
@@ -13,6 +13,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -24,17 +25,54 @@
         <ListView x:Name="MemoryList" Grid.Row="1" BorderBrush="#D6D1C8">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Header="时间" Width="145" DisplayMemberBinding="{Binding Created}" />
-                    <GridViewColumn Header="类型" Width="85" DisplayMemberBinding="{Binding Kind}" />
-                    <GridViewColumn Header="摘要" Width="315" DisplayMemberBinding="{Binding Summary}" />
+                    <GridViewColumn Header="时间" Width="132" DisplayMemberBinding="{Binding Created}" />
+                    <GridViewColumn Header="类型" Width="72" DisplayMemberBinding="{Binding Kind}" />
+                    <GridViewColumn Header="敏感度" Width="70" DisplayMemberBinding="{Binding Sensitivity}" />
+                    <GridViewColumn Header="来源类型" Width="104" DisplayMemberBinding="{Binding Provenance}" />
+                    <GridViewColumn Header="状态" Width="70" DisplayMemberBinding="{Binding Status}" />
+                    <GridViewColumn Header="有效期" Width="150" DisplayMemberBinding="{Binding Validity}" />
+                    <GridViewColumn Header="事实槽" Width="170" DisplayMemberBinding="{Binding FactSlot}" />
+                    <GridViewColumn Header="摘要" Width="178" DisplayMemberBinding="{Binding Summary}" />
                 </GridView>
             </ListView.View>
         </ListView>
 
-        <StackPanel Grid.Row="2" Margin="0,12,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Width="90" Height="34" Margin="0,0,10,0" Click="Refresh_Click">刷新</Button>
-            <Button Width="110" Height="34" Margin="0,0,10,0" Click="DeleteAll_Click">删除全部记忆</Button>
-            <Button Width="86" Height="34" Click="Close_Click">关闭</Button>
+        <StackPanel Grid.Row="2" Margin="0,10,0,0">
+            <TextBlock Text="添加或编辑一条你明确希望 Piko 记住的非敏感偏好或项目事项" FontWeight="SemiBold" />
+            <DockPanel Margin="0,6,0,0">
+                <ComboBox x:Name="MemoryKindCombo" Width="120" Height="32" Margin="0,0,8,0" SelectedIndex="0">
+                    <ComboBoxItem Content="偏好" Tag="Profile" />
+                    <ComboBoxItem Content="项目事实" Tag="Semantic" />
+                    <ComboBoxItem Content="重要事件" Tag="Episodic" />
+                </ComboBox>
+                <TextBox x:Name="MemorySummaryText" Height="32" MaxLength="240" Padding="6,4"
+                         VerticalContentAlignment="Center" ToolTip="最多 240 个字符；不要保存密码、健康或财务等敏感信息。" />
+            </DockPanel>
+            <DockPanel Margin="0,6,0,0" LastChildFill="False">
+                <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="生效自" />
+                <DatePicker x:Name="MemoryValidFromPicker" Width="130" Height="32" Margin="0,0,16,0" />
+                <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="有效至（含当天）" />
+                <DatePicker x:Name="MemoryValidUntilPicker" Width="150" Height="32" />
+            </DockPanel>
+            <DockPanel Margin="0,6,0,0" LastChildFill="False">
+                <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="事实属性" />
+                <TextBox x:Name="MemoryFactKeyText" Width="180" Height="30" Margin="0,0,12,0" Padding="6,3" MaxLength="80"
+                         ToolTip="可选；例如 response_language、theme、city。相同属性的不同值会被标记为可能冲突，不会自动覆盖。" />
+                <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="值" />
+                <TextBox x:Name="MemoryFactValueText" Width="180" Height="30" Padding="6,3" MaxLength="160"
+                         ToolTip="填写事实属性对应的值。属性和值都填写时才启用结构化匹配。" />
+            </DockPanel>
+            <TextBlock Margin="0,4,0,0" FontSize="11" Foreground="#647178"
+                       Text="一条记录尽量只写一个事实；可填属性和值帮助系统发现同一事实的不同版本。只给可能冲突提示，不自动判定真伪或覆盖。字段均加密保存在本机。请勿输入密码、健康或财务信息。" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Margin="0,10,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Width="88" Height="34" Margin="0,0,8,0" Click="AddMemory_Click">保存记忆</Button>
+            <Button Width="100" Height="34" Margin="0,0,8,0" Click="EditSelected_Click">保存为新版本</Button>
+            <Button Width="88" Height="34" Margin="0,0,8,0" Click="DeleteSelected_Click">删除选中项</Button>
+            <Button Width="60" Height="34" Margin="0,0,8,0" Click="Refresh_Click">刷新</Button>
+            <Button Width="85" Height="34" Margin="0,0,8,0" Click="DeleteAll_Click">删除全部</Button>
+            <Button Width="65" Height="34" Click="Close_Click">关闭</Button>
         </StackPanel>
     </Grid>
 </Window>

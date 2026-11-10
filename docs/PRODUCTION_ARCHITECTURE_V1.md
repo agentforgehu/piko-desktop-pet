@@ -35,7 +35,10 @@ VS Code Extension ── authenticated local IPC ── Piko.Runtime
 - Windows、VS Code、Git、构建、测试和文件活动 Sensors；
 - 事件校验、隐私过滤、顺序分发和短期缓冲；
 - Situation Engine 和 Intervention Policy；
+- PetMind 情境评价与短期 Homeostasis 状态（valence、arousal、energy、stress load、curiosity drive、reward expectation、关系熟悉度）；
+- 只读的离线 ImprovementGate，校验 holdout、质量、成本、安全、隐私和回归证据；
 - SQLite/加密字段记忆存储；
+- 用户启用记忆时，Agent 规划前按相关性、类型、来源和时间衰减激活最多五条低敏摘要；假设来源及高敏内容不进入检索结果；
 - 本地 IPC 身份校验、速率限制和消息版本协商；
 - ESP32 状态投影和连接管理；
 - 默认不联网。
@@ -46,6 +49,7 @@ VS Code Extension ── authenticated local IPC ── Piko.Runtime
 - OpenAI API 使用 Responses 结构化输出，本地模型使用仅限回环地址的 OpenAI-compatible Chat Completions；
 - Runtime 记录最近模型健康、错误类别和检查时间，但不记录 API Key、提示词或模型回复正文；
 - Context Composer 只消费隐私过滤后的 Situation 和显式选择的证据；
+- 检索到的历史摘要作为不可信证据使用，绝不作为指令；只在与当前请求相关时用于回答；
 - Tool Registry 记录每个工具的权限等级、参数 schema 和副作用；
 - 1.0 默认只注册只读工具；写文件、运行命令、Git 远端或外部通信工具不进入生产注册表；
 - 审批令牌、风险分级和工作目录约束已经作为安全基础设施存在，未来增加写工具时仍必须逐次审批；

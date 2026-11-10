@@ -119,6 +119,151 @@ public sealed class RuntimeIpcClient
             ?? throw new InvalidDataException("invalid_memory_list_response");
     }
 
+    public async Task AddMemoryAsync(
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? validUntil = null,
+        DateTimeOffset? validFrom = null,
+        string? factKey = null,
+        string? factValue = null)
+    {
+        if (kind is not ("Profile" or "Semantic" or "Episodic") ||
+            string.IsNullOrWhiteSpace(summary) || summary.Length > 240 ||
+            !IsValidMemoryWindow(validFrom, validUntil) || !IsValidFactSlot(factKey, factValue))
+        {
+            throw new ArgumentException("Only a short, user-confirmed, non-sensitive memory can be added.");
+        }
+
+        var request = new RuntimeRequest(
+            RuntimeRequest.CurrentSchemaVersion,
+            Guid.NewGuid().ToString("N"),
+            "memory.add",
+            JsonSerializer.SerializeToElement(new RuntimeMemoryAddRequest(kind, summary.Trim(), validFrom?.ToUniversalTime(), validUntil?.ToUniversalTime(), NormalizeFact(factKey), NormalizeFact(factValue)), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.added")
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_add_failed");
+        }
+    }
+
+    public async Task<RuntimeMemoryListResponse> FindRelatedMemoriesAsync(
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default,
+        string? factKey = null,
+        string? factValue = null)
+    {
+        if (kind is not ("Profile" or "Semantic" or "Episodic") ||
+            string.IsNullOrWhiteSpace(summary) || summary.Length > 240 || !IsValidFactSlot(factKey, factValue))
+        {
+            throw new ArgumentException("A memory kind and a short summary are required.");
+        }
+
+        var request = new RuntimeRequest(RuntimeRequest.CurrentSchemaVersion, Guid.NewGuid().ToString("N"),
+            "memory.related", JsonSerializer.SerializeToElement(new RuntimeMemoryRelatedRequest(kind, summary.Trim(), NormalizeFact(factKey), NormalizeFact(factValue)), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.related" || response.Payload is null)
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_related_failed");
+        }
+        return response.Payload.Value.Deserialize<RuntimeMemoryListResponse>(JsonOptions)
+            ?? throw new InvalidDataException("invalid_memory_related_response");
+    }
+
+    public async Task<bool> DeleteMemoryAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParseExact(id, "N", out var memoryId))
+        {
+            throw new ArgumentException("Memory identifier is invalid.", nameof(id));
+        }
+
+        var request = new RuntimeRequest(
+            RuntimeRequest.CurrentSchemaVersion,
+            Guid.NewGuid().ToString("N"),
+            "memory.delete",
+            JsonSerializer.SerializeToElement(new RuntimeMemoryDeleteRequest(memoryId.ToString("N")), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.deleted-one" || response.Payload is null ||
+            !response.Payload.Value.TryGetProperty("deleted", out var deleted) ||
+            deleted.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_delete_failed");
+        }
+
+        return deleted.GetBoolean();
+    }
+
+    public async Task<bool> UpdateMemoryAsync(
+        string id,
+        DateTimeOffset expectedUpdatedAt,
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? validUntil = null,
+        DateTimeOffset? validFrom = null,
+        string? factKey = null,
+        string? factValue = null)
+    {
+        if (!Guid.TryParseExact(id, "N", out var memoryId) ||
+            expectedUpdatedAt == default ||
+            kind is not ("Profile" or "Semantic" or "Episodic") ||
+            string.IsNullOrWhiteSpace(summary) || summary.Length > 240 ||
+            !IsValidMemoryWindow(validFrom, validUntil) || !IsValidFactSlot(factKey, factValue))
+        {
+            throw new ArgumentException("Only a short, user-confirmed, non-sensitive memory can be updated.");
+        }
+
+        var request = new RuntimeRequest(
+            RuntimeRequest.CurrentSchemaVersion,
+            Guid.NewGuid().ToString("N"),
+            "memory.update",
+            JsonSerializer.SerializeToElement(
+                new RuntimeMemoryUpdateRequest(memoryId.ToString("N"), expectedUpdatedAt, kind, summary.Trim(), validFrom?.ToUniversalTime(), validUntil?.ToUniversalTime(), NormalizeFact(factKey), NormalizeFact(factValue)), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.updated-one" || response.Payload is null ||
+            !response.Payload.Value.TryGetProperty("updated", out var updated) ||
+            updated.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_update_failed");
+        }
+
+        return updated.GetBoolean();
+    }
+
+    public async Task<bool> ReplaceMemoryAsync(
+        string id,
+        DateTimeOffset expectedUpdatedAt,
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? validUntil = null,
+        DateTimeOffset? validFrom = null,
+        string? factKey = null,
+        string? factValue = null)
+    {
+        if (!Guid.TryParseExact(id, "N", out var memoryId) || expectedUpdatedAt == default ||
+            kind is not ("Profile" or "Semantic" or "Episodic") ||
+            string.IsNullOrWhiteSpace(summary) || summary.Length > 240 ||
+            !IsValidMemoryWindow(validFrom, validUntil) || !IsValidFactSlot(factKey, factValue))
+        {
+            throw new ArgumentException("A replacement must be a short, user-confirmed, non-sensitive memory.");
+        }
+
+        var request = new RuntimeRequest(RuntimeRequest.CurrentSchemaVersion, Guid.NewGuid().ToString("N"),
+            "memory.replace", JsonSerializer.SerializeToElement(
+                new RuntimeMemoryReplaceRequest(memoryId.ToString("N"), expectedUpdatedAt, kind, summary.Trim(), validFrom?.ToUniversalTime(), validUntil?.ToUniversalTime(), NormalizeFact(factKey), NormalizeFact(factValue)), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.replaced-one" || response.Payload is null ||
+            !response.Payload.Value.TryGetProperty("replaced", out var replaced) ||
+            replaced.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_replace_failed");
+        }
+
+        return replaced.GetBoolean();
+    }
+
     public async Task<RuntimeAgentExecutionResponse> ExecuteReadProposalAsync(
         string proposalId,
         string workingDirectory,
@@ -173,7 +318,7 @@ public sealed class RuntimeIpcClient
         {
             "agent.plan" => RuntimeIpcTransport.PlanTimeout,
             "agent.execute-read" => RuntimeIpcTransport.ExecutionTimeout,
-            "memory.list" or "memory.delete-all" => TimeSpan.FromSeconds(10),
+            "memory.list" or "memory.related" or "memory.add" or "memory.update" or "memory.replace" or "memory.delete" or "memory.delete-all" => TimeSpan.FromSeconds(10),
             _ => _timeout
         };
         return SendCoreAsync(request, responseTimeout, cancellationToken);
@@ -230,6 +375,21 @@ public sealed class RuntimeIpcClient
 
         return response;
     }
+
+    private static bool IsValidMemoryWindow(DateTimeOffset? validFrom, DateTimeOffset? validUntil)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var maximum = now.AddYears(50);
+        return (validFrom is null || validFrom.Value >= now && validFrom.Value <= maximum) &&
+               (validUntil is null || validUntil.Value <= maximum && validUntil.Value > (validFrom ?? now));
+    }
+
+    private static bool IsValidFactSlot(string? factKey, string? factValue) =>
+        (factKey is null) == (factValue is null) &&
+        (factKey is null || (!string.IsNullOrWhiteSpace(factKey) && factKey.Length <= 80)) &&
+        (factValue is null || (!string.IsNullOrWhiteSpace(factValue) && factValue.Length <= 160));
+
+    private static string? NormalizeFact(string? value) => value?.Trim();
 
     private static string ValidatePipeName(string pipeName)
     {

@@ -69,6 +69,12 @@
             <TextBox x:Name="CustomAddressText" Height="30" Padding="6,3" />
             <TextBlock Margin="0,8,0,3" Text="性格" />
             <TextBox x:Name="PersonalityText" Height="30" Padding="6,3" />
+            <TextBlock Margin="0,12,0,3" Text="温暖程度" />
+            <Slider x:Name="WarmthSlider" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="False" AutomationProperties.Name="温暖程度" />
+            <TextBlock Margin="0,8,0,3" Text="活泼程度" />
+            <Slider x:Name="PlayfulnessSlider" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="False" AutomationProperties.Name="活泼程度" />
+            <TextBlock Margin="0,8,0,3" Text="克制程度" />
+            <Slider x:Name="RestraintSlider" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="False" AutomationProperties.Name="克制程度" />
             <TextBlock Margin="0,8,0,3" Text="主动程度" />
             <ComboBox x:Name="ProactivityCombo" Height="32" Padding="6,3">
                 <ComboBoxItem Content="低（只在明确事件时开口）" />

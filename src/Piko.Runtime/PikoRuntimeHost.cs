@@ -263,6 +263,13 @@ public sealed class PikoRuntimeHost
                 }
 
                 var currentSituation = engine.CurrentSituation;
+                var recalledMemories = activeMemoryStore is null
+                    ? Array.Empty<MemorySearchHit>()
+                    : await activeMemoryStore.SearchAsync(
+                        agentRequest.UserRequest,
+                        DateTimeOffset.UtcNow,
+                        limit: 5,
+                        cancellationToken: requestCancellation).ConfigureAwait(false);
                 var sanitizedContext = JsonSerializer.Serialize(new
                 {
                     situation = currentSituation.Kind.ToString(),
@@ -274,6 +281,22 @@ public sealed class PikoRuntimeHost
                     activityCategory = runtimeSettings.ForegroundActivityAwarenessEnabled
                         ? latestActivityCategory.ToString()
                         : "not_authorized",
+                    recalledMemories = recalledMemories.Select(hit => new
+                    {
+                        kind = hit.Record.Kind.ToString(),
+                        provenance = hit.Record.Provenance.ToString(),
+                        recordedAt = hit.Record.CreatedAt,
+                        activation = new
+                        {
+                            score = Math.Round(hit.Score, 3),
+                            relevance = Math.Round(hit.LexicalRelevance, 3),
+                            recency = Math.Round(hit.RecencyWeight, 3),
+                            reason = hit.ActivationReason
+                        },
+                        summary = hit.Record.Summary.Length <= 400
+                            ? hit.Record.Summary
+                            : hit.Record.Summary[..400]
+                    }).ToArray(),
                     privacyBoundary = "No screenshots, browser content, full code, window titles, or keyboard content."
                 });
                 var plan = await agentPlanner.PlanAsync(
@@ -402,6 +425,212 @@ public sealed class PikoRuntimeHost
                         result.WasTruncated));
             }
 
+            if (request.Type == "memory.add")
+            {
+                RuntimeMemoryAddRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryAddRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                if (memoryRequest is null ||
+                    !Enum.TryParse<MemoryKind>(memoryRequest.Kind, ignoreCase: true, out var memoryKind) ||
+                    memoryKind is not (MemoryKind.Profile or MemoryKind.Semantic or MemoryKind.Episodic) ||
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
+                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now) ||
+                    !IsValidFactSlot(memoryRequest.FactKey, memoryRequest.FactValue))
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Fail(request.RequestId,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled");
+                }
+
+                var summary = memoryRequest.Summary.Trim();
+                await activeMemoryStore.AddAsync(
+                    new MemoryDraft(
+                        memoryKind,
+                        summary,
+                        summary,
+                        DataSensitivity.Low,
+                        "user.confirmed",
+                        Provenance: MemoryProvenance.UserConfirmed,
+                        ValidFrom: memoryRequest.ValidFrom?.ToUniversalTime() ?? now,
+                        ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime(),
+                        FactKey: NormalizeFact(memoryRequest.FactKey),
+                        FactValue: NormalizeFact(memoryRequest.FactValue)),
+                    now,
+                    requestCancellation).ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.added", new { added = true });
+            }
+
+            if (request.Type == "memory.related")
+            {
+                RuntimeMemoryRelatedRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryRelatedRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+                if (memoryRequest is null ||
+                    !Enum.TryParse<MemoryKind>(memoryRequest.Kind, ignoreCase: false, out var memoryKind) ||
+                    memoryKind is not (MemoryKind.Profile or MemoryKind.Semantic or MemoryKind.Episodic) ||
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
+                    !IsValidFactSlot(memoryRequest.FactKey, memoryRequest.FactValue))
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Ok(request.RequestId, "memory.related", new RuntimeMemoryListResponse(
+                        false,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled",
+                        Array.Empty<RuntimeMemoryItem>()));
+                }
+
+                var related = await activeMemoryStore.FindRelatedAsync(
+                    memoryKind, memoryRequest.Summary.Trim(), DateTimeOffset.UtcNow,
+                    cancellationToken: requestCancellation,
+                    factKey: NormalizeFact(memoryRequest.FactKey),
+                    factValue: NormalizeFact(memoryRequest.FactValue)).ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.related", new RuntimeMemoryListResponse(
+                    true,
+                    "available",
+                    related.Select(hit => new RuntimeMemoryItem(
+                        hit.Record.Id.ToString("N"), hit.Record.Kind.ToString(), hit.Record.CreatedAt, hit.Record.UpdatedAt,
+                        hit.Record.ExpiresAt, hit.Record.Sensitivity.ToString(), hit.Record.Summary,
+                        hit.Record.Provenance.ToString(), hit.Record.IsSuperseded, hit.Record.ValidFrom, hit.Record.ValidUntil,
+                        hit.Record.FactKey, hit.Record.FactValue, hit.ActivationReason)).ToArray()));
+            }
+
+            if (request.Type == "memory.update")
+            {
+                RuntimeMemoryUpdateRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryUpdateRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                if (memoryRequest is null || !Guid.TryParseExact(memoryRequest.Id, "N", out var memoryId) ||
+                    memoryRequest.ExpectedUpdatedAt == default ||
+                    memoryRequest.Kind is not ("Profile" or "Semantic" or "Episodic") ||
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
+                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now) ||
+                    !IsValidFactSlot(memoryRequest.FactKey, memoryRequest.FactValue))
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Fail(request.RequestId,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled");
+                }
+
+                var draft = new MemoryDraft(
+                    Enum.Parse<MemoryKind>(memoryRequest.Kind),
+                    memoryRequest.Summary.Trim(),
+                    memoryRequest.Summary.Trim(),
+                    DataSensitivity.Low,
+                    "user.confirmed",
+                    Provenance: MemoryProvenance.UserConfirmed,
+                    ValidFrom: memoryRequest.ValidFrom?.ToUniversalTime() ?? now,
+                    ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime(),
+                    FactKey: NormalizeFact(memoryRequest.FactKey),
+                    FactValue: NormalizeFact(memoryRequest.FactValue));
+                var updated = await activeMemoryStore.UpdateAsync(
+                        memoryId,
+                        memoryRequest.ExpectedUpdatedAt,
+                        draft,
+                        now,
+                        requestCancellation)
+                    .ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.updated-one", new { updated });
+            }
+
+            if (request.Type == "memory.replace")
+            {
+                RuntimeMemoryReplaceRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryReplaceRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                if (memoryRequest is null || !Guid.TryParseExact(memoryRequest.Id, "N", out var memoryId) ||
+                    memoryRequest.ExpectedUpdatedAt == default ||
+                    memoryRequest.Kind is not ("Profile" or "Semantic" or "Episodic") ||
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
+                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now) ||
+                    !IsValidFactSlot(memoryRequest.FactKey, memoryRequest.FactValue))
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Fail(request.RequestId,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled");
+                }
+
+                var summary = memoryRequest.Summary.Trim();
+                var replacement = await activeMemoryStore.ReplaceAsync(memoryId, memoryRequest.ExpectedUpdatedAt,
+                    new MemoryDraft(Enum.Parse<MemoryKind>(memoryRequest.Kind), summary, summary,
+                        DataSensitivity.Low, "user.confirmed", Provenance: MemoryProvenance.UserConfirmed,
+                        ValidFrom: memoryRequest.ValidFrom?.ToUniversalTime() ?? now,
+                        ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime(),
+                        FactKey: NormalizeFact(memoryRequest.FactKey),
+                        FactValue: NormalizeFact(memoryRequest.FactValue)),
+                    now, requestCancellation).ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.replaced-one", new { replaced = replacement is not null });
+            }
+
+            if (request.Type == "memory.delete")
+            {
+                RuntimeMemoryDeleteRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryDeleteRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (memoryRequest is null || !Guid.TryParseExact(memoryRequest.Id, "N", out var memoryId))
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Fail(request.RequestId,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled");
+                }
+
+                var deleted = await activeMemoryStore.DeleteAsync(memoryId, requestCancellation).ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.deleted-one", new { deleted });
+            }
+
             if (request.Type == "memory.list")
             {
                 if (activeMemoryStore is null)
@@ -429,9 +658,16 @@ public sealed class PikoRuntimeHost
                             memory.Id.ToString("N"),
                             memory.Kind.ToString(),
                             memory.CreatedAt,
+                            memory.UpdatedAt,
                             memory.ExpiresAt,
                             memory.Sensitivity.ToString(),
-                            memory.Summary)).ToArray()));
+                            memory.Summary,
+                            memory.Provenance.ToString(),
+                            memory.IsSuperseded,
+                            memory.ValidFrom,
+                            memory.ValidUntil,
+                            memory.FactKey,
+                            memory.FactValue)).ToArray()));
             }
 
             if (request.Type == "memory.delete-all")
@@ -518,6 +754,20 @@ public sealed class PikoRuntimeHost
             }
         }
     }
+
+    private static bool IsValidMemoryWindow(DateTimeOffset? validFrom, DateTimeOffset? validUntil, DateTimeOffset now)
+    {
+        var maximum = now.AddYears(50);
+        return (validFrom is null || validFrom.Value >= now && validFrom.Value <= maximum) &&
+               (validUntil is null || validUntil.Value <= maximum && validUntil.Value > (validFrom ?? now));
+    }
+
+    private static bool IsValidFactSlot(string? factKey, string? factValue) =>
+        (factKey is null) == (factValue is null) &&
+        (factKey is null || (!string.IsNullOrWhiteSpace(factKey) && factKey.Trim().Length <= 80)) &&
+        (factValue is null || (!string.IsNullOrWhiteSpace(factValue) && factValue.Trim().Length <= 160));
+
+    private static string? NormalizeFact(string? value) => value?.Trim();
 
     private static RuntimeStatusSnapshot ApplyAcceptedUpdate(
         RuntimeStatusSnapshot status,
@@ -625,7 +875,7 @@ public sealed class PikoRuntimeHost
         {
             draft = new MemoryDraft(
                 MemoryKind.Episodic,
-                buildSucceeded ? "Build completed successfully" : "Build failed",
+                buildSucceeded ? "构建成功 Build completed successfully" : "构建失败 Build failed",
                 JsonSerializer.Serialize(new { success = buildSucceeded }),
                 DataSensitivity.Low,
                 contextEvent.Source);
@@ -638,8 +888,8 @@ public sealed class PikoRuntimeHost
             draft = new MemoryDraft(
                 MemoryKind.Episodic,
                 failedTests == 0
-                    ? "Tests completed successfully"
-                    : $"Tests completed with {failedTests} failures",
+                    ? "测试成功 Tests completed successfully"
+                    : $"测试失败 Tests completed with {failedTests} failures",
                 JsonSerializer.Serialize(new { failed = Math.Max(0, failedTests) }),
                 DataSensitivity.Low,
                 contextEvent.Source);

@@ -165,4 +165,86 @@ public sealed class RuntimeProcessManager
 
         return await _client.DeleteAllMemoriesAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    public async Task AddMemoryAsync(
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? validUntil = null,
+        DateTimeOffset? validFrom = null,
+        string? factKey = null,
+        string? factValue = null)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("Piko Runtime is unavailable.");
+        }
+
+        await _client.AddMemoryAsync(kind, summary, cancellationToken, validUntil, validFrom, factKey, factValue).ConfigureAwait(false);
+    }
+
+    public async Task<RuntimeMemoryListResponse> FindRelatedMemoriesAsync(
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default,
+        string? factKey = null,
+        string? factValue = null)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("runtime_unavailable");
+        }
+        return await _client.FindRelatedMemoriesAsync(kind, summary, cancellationToken, factKey, factValue).ConfigureAwait(false);
+    }
+
+    public async Task<bool> DeleteMemoryAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("Piko Runtime is unavailable.");
+        }
+
+        return await _client.DeleteMemoryAsync(id, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> UpdateMemoryAsync(
+        string id,
+        DateTimeOffset expectedUpdatedAt,
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? validUntil = null,
+        DateTimeOffset? validFrom = null,
+        string? factKey = null,
+        string? factValue = null)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("runtime_unavailable");
+        }
+
+        return await _client.UpdateMemoryAsync(id, expectedUpdatedAt, kind, summary, cancellationToken, validUntil, validFrom, factKey, factValue).ConfigureAwait(false);
+    }
+
+    public async Task<bool> ReplaceMemoryAsync(
+        string id, DateTimeOffset expectedUpdatedAt, string kind, string summary,
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? validUntil = null,
+        DateTimeOffset? validFrom = null,
+        string? factKey = null,
+        string? factValue = null)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("runtime_unavailable");
+        }
+        return await _client.ReplaceMemoryAsync(id, expectedUpdatedAt, kind, summary, cancellationToken, validUntil, validFrom, factKey, factValue).ConfigureAwait(false);
+    }
 }

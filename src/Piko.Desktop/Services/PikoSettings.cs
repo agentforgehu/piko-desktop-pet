@@ -4,7 +4,7 @@ namespace Piko.Desktop.Services;
 
 public sealed record PikoSettings
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public bool HasCompletedWelcome { get; init; }
@@ -29,13 +29,16 @@ public sealed record PikoSettings
     public string UserName { get; init; } = string.Empty;
     public string CustomAddress { get; init; } = string.Empty;
     public string Personality { get; init; } = "温暖、简短、稍微活泼";
+    public double PersonalityWarmth { get; init; } = 0.82;
+    public double PersonalityPlayfulness { get; init; } = 0.68;
+    public double PersonalityRestraint { get; init; } = 0.78;
     public PetProactivity Proactivity { get; init; } = PetProactivity.Low;
     public bool ForegroundActivityAwarenessEnabled { get; init; } = true;
     public bool LastExitWasClean { get; init; } = true;
     public double? SavedFeetX { get; init; }
     public double? SavedFeetY { get; init; }
 
-    public PikoSettings UpgradeOrDefault() => SchemaVersion is 1 or 2 or 3 or CurrentSchemaVersion
+    public PikoSettings UpgradeOrDefault() => SchemaVersion is 1 or 2 or 3 or 4 or CurrentSchemaVersion
         ? this with
         {
             SchemaVersion = CurrentSchemaVersion,

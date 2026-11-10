@@ -7,6 +7,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.30" />
     <ProjectReference Include="..\Piko.Context\Piko.Context.csproj" />
+    <ProjectReference Include="..\Piko.Cognition\Piko.Cognition.csproj" />
   </ItemGroup>
 </Project>
 

@@ -2,13 +2,44 @@ using Piko.World.Behavior;
 using Piko.World.Compiler;
 using Piko.World.Geometry;
 using Piko.World.Model;
+using Piko.Cognition;
 
 namespace Piko.World.Tests;
 
 public sealed class PetControllerTests
 {
     [Fact]
-    public void PetMind_ModelExpressionIsAllowlistedBoundedAndChangesEmotion()
+    public void CognitionAffectSystemIsHostAgnosticBoundedAndExplainable()
+    {
+        var system = new AffectSystem();
+        var transition = system.Appraise(new AppraisalSignal(
+            "uncertain_goal_failure", 4, -3, 3, 0, 0, EnergyDelta: -4));
+
+        Assert.Equal("uncertain_goal_failure", transition.Signal.Cause);
+        Assert.Equal(AffectState.Baseline, transition.Before);
+        Assert.Equal(system.State, transition.After);
+        Assert.InRange(transition.After.Valence, -1, 1);
+        Assert.InRange(transition.After.Arousal, 0, 1);
+        Assert.InRange(transition.After.Energy, 0, 1);
+        Assert.InRange(transition.After.StressLoad, 0, 1);
+        Assert.True(transition.After.StressLoad > transition.Before.StressLoad);
+    }
+
+    [Fact]
+    public void CognitionHomeostasisPolicySuggestsModesWithoutGrantingExploration()
+    {
+        var policy = new HomeostasisPolicy();
+
+        Assert.Equal(BehaviorDirective.Rest, policy.Choose(
+            AffectState.Baseline with { Energy = 0.1 }, explorationAllowed: true));
+        Assert.Equal(BehaviorDirective.Continue, policy.Choose(
+            AffectState.Baseline with { CuriosityDrive = 0.99 }, explorationAllowed: false));
+        Assert.Equal(BehaviorDirective.Explore, policy.Choose(
+            AffectState.Baseline with { CuriosityDrive = 0.99 }, explorationAllowed: true));
+    }
+
+    [Fact]
+    public void PetMind_ModelExpressionIsAllowlistedBoundedAndDoesNotMutateInternalState()
     {
         var mind = new PetMind();
 
@@ -17,8 +48,103 @@ public sealed class PetControllerTests
         Assert.Equal(PetCommand.Celebrate, reaction.Command);
         Assert.Equal(500, reaction.Message.Length);
         Assert.True(reaction.ShouldSpeak);
-        Assert.True(reaction.Emotion.Valence > PetEmotionState.Baseline.Valence);
-        Assert.True(reaction.Emotion.Arousal > PetEmotionState.Baseline.Arousal);
+        Assert.Equal(PetEmotionState.Baseline, reaction.Emotion);
+        Assert.Null(mind.LastTransition);
+    }
+
+    [Fact]
+    public void PetMind_AppraisalRecordsCauseAndBoundsEveryStateDimension()
+    {
+        var mind = new PetMind();
+
+        var emotion = mind.Appraise(new PetAppraisalEvent(
+            "uncertain_task_failure",
+            GoalRelevance: 3,
+            OutcomeValence: -2,
+            ArousalDelta: 2,
+            Certainty: 0,
+            Controllability: 0,
+            EnergyDelta: -2,
+            RelationshipDelta: 1));
+
+        Assert.Equal("uncertain_task_failure", mind.LastTransition!.Appraisal.Trigger);
+        Assert.Equal(PetEmotionState.Baseline, mind.LastTransition.Before);
+        Assert.Equal(emotion, mind.LastTransition.After);
+        Assert.InRange(emotion.Valence, -1, 1);
+        Assert.InRange(emotion.Arousal, 0, 1);
+        Assert.InRange(emotion.Energy, 0, 1);
+        Assert.InRange(emotion.Attachment, 0, 1);
+        Assert.True(emotion.Arousal > PetEmotionState.Baseline.Arousal);
+    }
+
+    [Fact]
+    public void PetMind_RepeatedModelExpressionsDoNotArtificiallyIncreaseRelationshipState()
+    {
+        var mind = new PetMind();
+        var initialRelationship = mind.Emotion.Attachment;
+
+        for (var index = 0; index < 100; index++)
+        {
+            mind.ReactToModel("很好", "happy", "greet");
+        }
+
+        Assert.Equal(initialRelationship, mind.Emotion.Attachment);
+    }
+
+    [Fact]
+    public void PetMind_AppraisalUpdatesStressCuriosityAndRewardDrives()
+    {
+        var mind = new PetMind();
+        var before = mind.Emotion;
+
+        var after = mind.Appraise(new PetAppraisalEvent(
+            "novel_goal_progress",
+            GoalRelevance: 1,
+            OutcomeValence: 0.25,
+            ArousalDelta: 0.1,
+            Certainty: 0.8,
+            Controllability: 0.9,
+            Novelty: 0.8,
+            GoalProgressDelta: 0.7));
+
+        Assert.True(after.CuriosityDrive > before.CuriosityDrive);
+        Assert.True(after.RewardExpectation > before.RewardExpectation);
+        Assert.True(after.StressLoad >= 0 && after.StressLoad <= 1);
+    }
+
+    [Fact]
+    public void PetMind_RestingRestoresEnergyAndRelievesStressOverTime()
+    {
+        var mind = new PetMind();
+        var stressed = mind.Appraise(new PetAppraisalEvent(
+            "uncontrolled_failure", 1, -0.4, 0.3, 0.1, 0.1, EnergyDelta: -0.2));
+
+        var recovered = mind.Advance(20, resting: true);
+
+        Assert.True(recovered.Energy > stressed.Energy);
+        Assert.True(recovered.StressLoad < stressed.StressLoad);
+    }
+
+    [Fact]
+    public void PetBehaviorPolicy_PrioritizesRestForLowEnergyOrHighStress()
+    {
+        var policy = new PetBehaviorPolicy();
+
+        Assert.Equal(PetCommand.Rest, policy.Choose(
+            PetEmotionState.Baseline with { Energy = 0.2 }, windowExplorationEnabled: true));
+        Assert.Equal(PetCommand.Rest, policy.Choose(
+            PetEmotionState.Baseline with { StressLoad = 0.9 }, windowExplorationEnabled: true));
+    }
+
+    [Fact]
+    public void PetBehaviorPolicy_UsesCuriosityToSelectExploration()
+    {
+        var policy = new PetBehaviorPolicy();
+
+        var command = policy.Choose(
+            PetEmotionState.Baseline with { CuriosityDrive = 0.9 }, windowExplorationEnabled: true);
+
+        Assert.Contains(command, new[] { PetCommand.Walk, PetCommand.Climb, PetCommand.Jump, PetCommand.Peek });
     }
 
     private readonly DesktopWorldCompiler _compiler = new();

@@ -14,5 +14,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Piko.Agent\Piko.Agent.csproj" />
+    <ProjectReference Include="..\..\src\Piko.Improvement.Cli\Piko.Improvement.Cli.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\benchmarks\cognitive-v1.json" Link="Fixtures\cognitive-v1.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
