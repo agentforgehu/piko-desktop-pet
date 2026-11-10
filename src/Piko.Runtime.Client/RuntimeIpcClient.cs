@@ -197,6 +197,34 @@ public sealed class RuntimeIpcClient
         return updated.GetBoolean();
     }
 
+    public async Task<bool> ReplaceMemoryAsync(
+        string id,
+        DateTimeOffset expectedUpdatedAt,
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParseExact(id, "N", out var memoryId) || expectedUpdatedAt == default ||
+            kind is not ("Profile" or "Semantic" or "Episodic") ||
+            string.IsNullOrWhiteSpace(summary) || summary.Length > 240)
+        {
+            throw new ArgumentException("A replacement must be a short, user-confirmed, non-sensitive memory.");
+        }
+
+        var request = new RuntimeRequest(RuntimeRequest.CurrentSchemaVersion, Guid.NewGuid().ToString("N"),
+            "memory.replace", JsonSerializer.SerializeToElement(
+                new RuntimeMemoryReplaceRequest(memoryId.ToString("N"), expectedUpdatedAt, kind, summary.Trim()), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.replaced-one" || response.Payload is null ||
+            !response.Payload.Value.TryGetProperty("replaced", out var replaced) ||
+            replaced.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_replace_failed");
+        }
+
+        return replaced.GetBoolean();
+    }
+
     public async Task<RuntimeAgentExecutionResponse> ExecuteReadProposalAsync(
         string proposalId,
         string workingDirectory,

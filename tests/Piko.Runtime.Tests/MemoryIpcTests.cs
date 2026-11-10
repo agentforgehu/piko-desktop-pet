@@ -72,13 +72,22 @@ public sealed class MemoryIpcTests
                 profile.Id, profile.UpdatedAt, "Profile", "过时编辑不应覆盖新值", timeout.Token));
             profile = Assert.Single((await client.ListMemoriesAsync(timeout.Token)).Items, item => item.Kind == "Profile");
             Assert.Equal("偏好使用简体中文和简洁回答", profile.Summary);
+            var priorProfileId = profile.Id;
+            Assert.True(await client.ReplaceMemoryAsync(
+                profile.Id, profile.UpdatedAt, "Profile", "偏好简体中文并先给结论", timeout.Token));
+            var profileVersions = (await client.ListMemoriesAsync(timeout.Token)).Items
+                .Where(item => item.Kind == "Profile").ToArray();
+            Assert.Equal(2, profileVersions.Length);
+            Assert.Equal("偏好简体中文并先给结论", Assert.Single(profileVersions, item => !item.IsSuperseded).Summary);
+            Assert.Equal(priorProfileId, Assert.Single(profileVersions, item => item.IsSuperseded).Id);
+            profile = Assert.Single(profileVersions, item => !item.IsSuperseded);
             Assert.True(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
             Assert.False(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
             var remaining = Assert.Single((await client.ListMemoriesAsync(timeout.Token)).Items);
             Assert.Equal("Episodic", remaining.Kind);
             Assert.Equal("构建失败 Build failed", remaining.Summary);
 
-            Assert.Equal(1, await client.DeleteAllMemoriesAsync(timeout.Token));
+            Assert.Equal(2, await client.DeleteAllMemoriesAsync(timeout.Token));
             Assert.Empty((await client.ListMemoriesAsync(timeout.Token)).Items);
             await client.StopAsync(timeout.Token);
             await hostTask.WaitAsync(TimeSpan.FromSeconds(5));

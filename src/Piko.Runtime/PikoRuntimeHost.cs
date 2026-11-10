@@ -508,6 +508,39 @@ public sealed class PikoRuntimeHost
                 return RuntimeResponse.Ok(request.RequestId, "memory.updated-one", new { updated });
             }
 
+            if (request.Type == "memory.replace")
+            {
+                RuntimeMemoryReplaceRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryReplaceRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+
+                if (memoryRequest is null || !Guid.TryParseExact(memoryRequest.Id, "N", out var memoryId) ||
+                    memoryRequest.ExpectedUpdatedAt == default ||
+                    memoryRequest.Kind is not ("Profile" or "Semantic" or "Episodic") ||
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Fail(request.RequestId,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled");
+                }
+
+                var summary = memoryRequest.Summary.Trim();
+                var replacement = await activeMemoryStore.ReplaceAsync(memoryId, memoryRequest.ExpectedUpdatedAt,
+                    new MemoryDraft(Enum.Parse<MemoryKind>(memoryRequest.Kind), summary, summary,
+                        DataSensitivity.Low, "user.confirmed", Provenance: MemoryProvenance.UserConfirmed),
+                    DateTimeOffset.UtcNow, requestCancellation).ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.replaced-one", new { replaced = replacement is not null });
+            }
+
             if (request.Type == "memory.delete")
             {
                 RuntimeMemoryDeleteRequest? memoryRequest;
@@ -566,7 +599,8 @@ public sealed class PikoRuntimeHost
                             memory.ExpiresAt,
                             memory.Sensitivity.ToString(),
                             memory.Summary,
-                            memory.Provenance.ToString())).ToArray()));
+                            memory.Provenance.ToString(),
+                            memory.IsSuperseded)).ToArray()));
             }
 
             if (request.Type == "memory.delete-all")

@@ -172,6 +172,40 @@ public sealed class MemoryStoreTests
     }
 
     [Fact]
+    public async Task ExplicitReplacementRetainsHistoryAndOnlyActivatesCurrentVersion()
+    {
+        var (root, _, store) = CreateStore();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var old = await store.AddAsync(new MemoryDraft(MemoryKind.Profile,
+                "用户偏好暗色主题", "dark theme", DataSensitivity.Low, "user.confirmed",
+                Provenance: MemoryProvenance.UserConfirmed), now);
+            var replacement = await store.ReplaceAsync(old.Id, old.UpdatedAt,
+                new MemoryDraft(MemoryKind.Profile, "用户偏好浅色主题", "light theme", DataSensitivity.Low,
+                    "user.confirmed", Provenance: MemoryProvenance.UserConfirmed), now.AddSeconds(1));
+
+            Assert.NotNull(replacement);
+            Assert.Equal("用户偏好浅色主题", replacement.Summary);
+            var history = await store.ListAsync(now.AddSeconds(2));
+            Assert.Equal(2, history.Count);
+            Assert.True(Assert.Single(history, item => item.Id == old.Id).IsSuperseded);
+            Assert.False(Assert.Single(history, item => item.Id == replacement.Id).IsSuperseded);
+            var hits = await store.SearchAsync("用户偏好主题", now.AddSeconds(2));
+            Assert.DoesNotContain(hits, hit => hit.Record.Id == old.Id);
+            Assert.Contains(hits, hit => hit.Record.Id == replacement.Id);
+            Assert.Null(await store.ReplaceAsync(old.Id, old.UpdatedAt,
+                new MemoryDraft(MemoryKind.Profile, "another preference", "", DataSensitivity.Low,
+                    "user.confirmed", Provenance: MemoryProvenance.UserConfirmed), now.AddSeconds(2)));
+        }
+        finally
+        {
+            store.Dispose();
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task ExistingMemoryDatabaseMigratesAndMarksOldRowsAsObservedEvents()
     {
         var root = Path.Combine(Path.GetTempPath(), "PikoMemoryTests", Guid.NewGuid().ToString("N"));

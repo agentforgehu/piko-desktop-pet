@@ -5,7 +5,7 @@ namespace Piko.Desktop;
 
 public partial class MemoryWindow : Window
 {
-    private sealed record MemoryListItem(string Id, DateTimeOffset UpdatedAt, string Created, string Kind, string Sensitivity, string Provenance, string Summary);
+    private sealed record MemoryListItem(string Id, DateTimeOffset UpdatedAt, string Created, string Kind, string Sensitivity, string Provenance, string Status, bool IsSuperseded, string Summary);
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private readonly RuntimeProcessManager _runtime;
@@ -83,6 +83,12 @@ public partial class MemoryWindow : Window
             return;
         }
 
+        if (selected.IsSuperseded)
+        {
+            StatusText.Text = "该版本已归档，请选中当前版本。";
+            return;
+        }
+
         if (MemoryKindCombo.Items.OfType<System.Windows.Controls.ComboBoxItem>()
             .FirstOrDefault(item => string.Equals(item.Tag as string, selected.Kind, StringComparison.Ordinal)) is { } kindItem)
         {
@@ -92,7 +98,7 @@ public partial class MemoryWindow : Window
         if (string.IsNullOrWhiteSpace(MemorySummaryText.Text))
         {
             MemorySummaryText.Text = selected.Summary;
-            StatusText.Text = "已载入所选记忆；编辑摘要后再次点击“更新选中项”。";
+            StatusText.Text = "已载入当前版本；编辑摘要后再次点击“保存为新版本”，旧版本会保留为历史记录。";
             return;
         }
 
@@ -105,8 +111,8 @@ public partial class MemoryWindow : Window
 
         try
         {
-            var updated = await _runtime.UpdateMemoryAsync(selected.Id, selected.UpdatedAt, kind, MemorySummaryText.Text.Trim());
-            StatusText.Text = updated ? "记忆已更新。" : "这条记忆已被修改、过期或删除，请刷新后重试。";
+            var replaced = await _runtime.ReplaceMemoryAsync(selected.Id, selected.UpdatedAt, kind, MemorySummaryText.Text.Trim());
+            StatusText.Text = replaced ? "已保存为新版本，旧版本已归档。" : "这条记忆已被修改、过期或删除，请刷新后重试。";
             MemorySummaryText.Clear();
             await RefreshAsync();
         }
@@ -162,6 +168,8 @@ public partial class MemoryWindow : Window
                 item.Kind,
                 item.Sensitivity,
                 item.Provenance,
+                item.IsSuperseded ? "已被替代" : "当前",
+                item.IsSuperseded,
                 item.Summary)).ToArray();
             StatusText.Text = $"共 {result.Items.Count} 条。用户添加的偏好/语义记忆默认不过期；事件记忆按类型到期。";
         }

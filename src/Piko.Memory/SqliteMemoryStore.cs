@@ -49,9 +49,9 @@ public sealed class SqliteMemoryStore : IDisposable
         command.Transaction = (SqliteTransaction)transaction;
         command.CommandText = """
             INSERT INTO memories
-                (id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance)
+                (id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by)
             VALUES
-                ($id, $kind, $created, $updated, $expires, $sensitivity, $source, $summary, $payload, $provenance);
+                ($id, $kind, $created, $updated, $expires, $sensitivity, $source, $summary, $payload, $provenance, NULL);
             """;
         command.Parameters.AddWithValue("$id", id.ToString("N"));
         command.Parameters.AddWithValue("$kind", (int)draft.Kind);
@@ -94,6 +94,73 @@ public sealed class SqliteMemoryStore : IDisposable
             draft.Provenance);
     }
 
+    /// <summary>Stores a user-confirmed replacement while retaining the prior version for audit and recovery.</summary>
+    public async Task<MemoryRecord?> ReplaceAsync(
+        Guid priorId,
+        DateTimeOffset expectedUpdatedAt,
+        MemoryDraft replacement,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (expectedUpdatedAt == default)
+        {
+            throw new ArgumentException("An expected update timestamp is required.", nameof(expectedUpdatedAt));
+        }
+        ValidateDraft(replacement);
+        if (replacement.Provenance != MemoryProvenance.UserConfirmed)
+        {
+            throw new ArgumentException("A replacement must be explicitly user-confirmed.", nameof(replacement));
+        }
+
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        var id = Guid.NewGuid();
+        var expiresAt = replacement.ExpiresAt ?? DefaultExpiry(replacement.Kind, now);
+        var summary = _protector.Protect(replacement.Summary, $"{id:N}:summary");
+        var payload = _protector.Protect(replacement.Payload, $"{id:N}:payload");
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using var mark = connection.CreateCommand();
+        mark.Transaction = (SqliteTransaction)transaction;
+        mark.CommandText = """
+            UPDATE memories SET superseded_by = $newId, updated_at = $updated
+            WHERE id = $oldId AND updated_at = $expectedUpdated AND superseded_by IS NULL
+              AND (expires_at IS NULL OR expires_at > $now);
+            """;
+        mark.Parameters.AddWithValue("$newId", id.ToString("N"));
+        mark.Parameters.AddWithValue("$oldId", priorId.ToString("N"));
+        mark.Parameters.AddWithValue("$expectedUpdated", expectedUpdatedAt.ToString("O", CultureInfo.InvariantCulture));
+        mark.Parameters.AddWithValue("$updated", (now > expectedUpdatedAt ? now : expectedUpdatedAt.AddTicks(1)).ToString("O", CultureInfo.InvariantCulture));
+        mark.Parameters.AddWithValue("$now", now.ToString("O", CultureInfo.InvariantCulture));
+        if (await mark.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+
+        await using var insert = connection.CreateCommand();
+        insert.Transaction = (SqliteTransaction)transaction;
+        insert.CommandText = """
+            INSERT INTO memories
+                (id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by)
+            VALUES ($id, $kind, $created, $updated, $expires, $sensitivity, $source, $summary, $payload, $provenance, NULL);
+            """;
+        insert.Parameters.AddWithValue("$id", id.ToString("N"));
+        insert.Parameters.AddWithValue("$kind", (int)replacement.Kind);
+        insert.Parameters.AddWithValue("$created", now.ToString("O", CultureInfo.InvariantCulture));
+        insert.Parameters.AddWithValue("$updated", now.ToString("O", CultureInfo.InvariantCulture));
+        insert.Parameters.AddWithValue("$expires", expiresAt is null ? DBNull.Value : expiresAt.Value.ToString("O", CultureInfo.InvariantCulture));
+        insert.Parameters.AddWithValue("$sensitivity", (int)replacement.Sensitivity);
+        insert.Parameters.AddWithValue("$source", replacement.Source);
+        insert.Parameters.AddWithValue("$summary", summary);
+        insert.Parameters.AddWithValue("$payload", payload);
+        insert.Parameters.AddWithValue("$provenance", (int)replacement.Provenance);
+        await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new MemoryRecord(id, replacement.Kind, now, now, expiresAt, replacement.Sensitivity,
+            replacement.Source, replacement.Summary, replacement.Payload, replacement.Provenance);
+    }
+
     public async Task<MemoryRecord?> GetAsync(
         Guid id,
         DateTimeOffset now,
@@ -104,7 +171,7 @@ public sealed class SqliteMemoryStore : IDisposable
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance
+            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by
             FROM memories
             WHERE id = $id AND (expires_at IS NULL OR expires_at > $now);
             """;
@@ -133,7 +200,7 @@ public sealed class SqliteMemoryStore : IDisposable
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance
+            SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance, superseded_by
             FROM memories
             WHERE (expires_at IS NULL OR expires_at > $now)
               AND ($kind IS NULL OR kind = $kind)
@@ -185,6 +252,7 @@ public sealed class SqliteMemoryStore : IDisposable
                 maximumSensitivity: DataSensitivity.Low)
             .ConfigureAwait(false);
         return candidates
+            .Where(record => !record.IsSuperseded)
             .Where(record => record.Provenance != MemoryProvenance.Hypothetical)
             .Select(record => CreateActivation(query, queryTokens, record, now))
             .Where(hit => hit.Score >= 0.16)
@@ -248,7 +316,7 @@ public sealed class SqliteMemoryStore : IDisposable
                 summary_cipher = $summary,
                 payload_cipher = $payload,
                 provenance = $provenance
-            WHERE id = $id AND updated_at = $expectedUpdated
+            WHERE id = $id AND updated_at = $expectedUpdated AND superseded_by IS NULL
               AND (expires_at IS NULL OR expires_at > $now);
             """;
         command.Parameters.AddWithValue("$id", id.ToString("N"));
@@ -335,7 +403,8 @@ public sealed class SqliteMemoryStore : IDisposable
                     source TEXT NOT NULL,
                     summary_cipher TEXT NOT NULL,
                     payload_cipher TEXT NOT NULL,
-                    provenance INTEGER NOT NULL DEFAULT 0
+                    provenance INTEGER NOT NULL DEFAULT 0,
+                    superseded_by TEXT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_memories_expiry ON memories(expires_at);
                 CREATE INDEX IF NOT EXISTS idx_memories_kind_updated ON memories(kind, updated_at DESC);
@@ -356,6 +425,12 @@ public sealed class SqliteMemoryStore : IDisposable
             {
                 await using var migrate = connection.CreateCommand();
                 migrate.CommandText = "ALTER TABLE memories ADD COLUMN provenance INTEGER NOT NULL DEFAULT 0;";
+                await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            if (!columnNames.Contains("superseded_by"))
+            {
+                await using var migrate = connection.CreateCommand();
+                migrate.CommandText = "ALTER TABLE memories ADD COLUMN superseded_by TEXT NULL;";
                 await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
             _initialized = true;
@@ -391,7 +466,8 @@ public sealed class SqliteMemoryStore : IDisposable
             reader.GetString(6),
             _protector.Unprotect(reader.GetString(7), $"{id:N}:summary"),
             _protector.Unprotect(reader.GetString(8), $"{id:N}:payload"),
-            (MemoryProvenance)reader.GetInt32(9));
+            (MemoryProvenance)reader.GetInt32(9),
+            !reader.IsDBNull(10));
     }
 
     private static DateTimeOffset? DefaultExpiry(MemoryKind kind, DateTimeOffset now) => kind switch

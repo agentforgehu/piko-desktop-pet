@@ -29,6 +29,7 @@
                     <GridViewColumn Header="类型" Width="72" DisplayMemberBinding="{Binding Kind}" />
                     <GridViewColumn Header="敏感度" Width="70" DisplayMemberBinding="{Binding Sensitivity}" />
                     <GridViewColumn Header="来源类型" Width="104" DisplayMemberBinding="{Binding Provenance}" />
+                    <GridViewColumn Header="状态" Width="70" DisplayMemberBinding="{Binding Status}" />
                     <GridViewColumn Header="摘要" Width="178" DisplayMemberBinding="{Binding Summary}" />
                 </GridView>
             </ListView.View>
@@ -51,7 +52,7 @@
 
         <StackPanel Grid.Row="3" Margin="0,10,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Width="88" Height="34" Margin="0,0,8,0" Click="AddMemory_Click">保存记忆</Button>
-            <Button Width="88" Height="34" Margin="0,0,8,0" Click="EditSelected_Click">更新选中项</Button>
+            <Button Width="100" Height="34" Margin="0,0,8,0" Click="EditSelected_Click">保存为新版本</Button>
             <Button Width="88" Height="34" Margin="0,0,8,0" Click="DeleteSelected_Click">删除选中项</Button>
             <Button Width="60" Height="34" Margin="0,0,8,0" Click="Refresh_Click">刷新</Button>
             <Button Width="85" Height="34" Margin="0,0,8,0" Click="DeleteAll_Click">删除全部</Button>

@@ -8,7 +8,8 @@ public sealed record RuntimeMemoryItem(
     DateTimeOffset? ExpiresAt,
     string Sensitivity,
     string Summary,
-    string Provenance = "ObservedEvent");
+    string Provenance = "ObservedEvent",
+    bool IsSuperseded = false);
 
 public sealed record RuntimeMemoryListResponse(
     bool Available,
@@ -17,4 +18,5 @@ public sealed record RuntimeMemoryListResponse(
 
 public sealed record RuntimeMemoryAddRequest(string Kind, string Summary);
 public sealed record RuntimeMemoryUpdateRequest(string Id, DateTimeOffset ExpectedUpdatedAt, string Kind, string Summary);
+public sealed record RuntimeMemoryReplaceRequest(string Id, DateTimeOffset ExpectedUpdatedAt, string Kind, string Summary);
 public sealed record RuntimeMemoryDeleteRequest(string Id);

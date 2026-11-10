@@ -208,4 +208,16 @@ public sealed class RuntimeProcessManager
 
         return await _client.UpdateMemoryAsync(id, expectedUpdatedAt, kind, summary, cancellationToken).ConfigureAwait(false);
     }
+
+    public async Task<bool> ReplaceMemoryAsync(
+        string id, DateTimeOffset expectedUpdatedAt, string kind, string summary,
+        CancellationToken cancellationToken = default)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("runtime_unavailable");
+        }
+        return await _client.ReplaceMemoryAsync(id, expectedUpdatedAt, kind, summary, cancellationToken).ConfigureAwait(false);
+    }
 }
