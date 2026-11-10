@@ -57,6 +57,7 @@ public sealed record OfflineComparisonReport(
 public static class OfflineCandidateEvaluator
 {
     private const double MaximumLatencyIncrease = 0.20;
+    public const int MaximumScenarioCount = 10_000;
 
     public static OfflineComparisonReport Evaluate(OfflineComparisonRequest request)
     {
@@ -67,9 +68,9 @@ public static class OfflineCandidateEvaluator
         ValidateVersion(request.DatasetVersion, nameof(request.DatasetVersion));
         ValidateVersion(request.EvaluatorVersion, nameof(request.EvaluatorVersion));
         ArgumentNullException.ThrowIfNull(request.Scenarios);
-        if (request.Scenarios.Count == 0)
+        if (request.Scenarios.Count is < 1 or > MaximumScenarioCount)
         {
-            throw new ArgumentException("At least one paired holdout measurement is required.", nameof(request));
+            throw new ArgumentException($"Scenario count must be between 1 and {MaximumScenarioCount}.", nameof(request));
         }
 
         if (request.Scenarios.Any(item => item is null))

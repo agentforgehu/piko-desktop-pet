@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Piko.Agent.Improvement;
 
 namespace Piko.Agent.Tests;
@@ -100,6 +101,166 @@ public sealed class ImprovementGateTests
             {
                 ScenarioId = item.ScenarioId == "scenario-00" ? "user@example.com" : item.ScenarioId
             }).ToArray())));
+    }
+
+    [Fact]
+    public async Task ImprovementLedgerAppendsAndVerifiesAHashChainedAggregateReport()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "PikoImprovementLedgerTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "reviews.jsonl");
+        try
+        {
+            var report = OfflineCandidateEvaluator.Evaluate(OfflineRequest(CreateMeasurements(12)));
+            var first = await ImprovementLedger.AppendAsync(path, report, DateTimeOffset.UtcNow);
+            var second = await ImprovementLedger.AppendAsync(path, report, DateTimeOffset.UtcNow.AddMinutes(1));
+            var review = await ImprovementLedger.AppendReviewAsync(
+                path,
+                report.Evaluation.CandidateId,
+                "maintainer-01",
+                ImprovementReviewOutcome.AcceptedForManualIntegration,
+                "production-v1",
+                DateTimeOffset.UtcNow.AddMinutes(2));
+            var verification = await ImprovementLedger.VerifyAsync(path);
+
+            Assert.Equal(string.Empty, first.PreviousEntryDigest);
+            Assert.Equal(first.EntryDigest, second.PreviousEntryDigest);
+            Assert.True(second.Decision.EligibleForMaintainerReview);
+            Assert.True(second.Decision.RequiresHumanApproval);
+            Assert.False(second.Decision.MayChangeProduction);
+            Assert.Equal("maintainer-01", review.Review!.ReviewerId);
+            Assert.Equal("production-v1", review.Review.RollbackVersion);
+            Assert.True(verification.IsValid);
+            Assert.Equal(3, verification.EntryCount);
+            Assert.Equal(review.EntryDigest, verification.LastEntryDigest);
+            Assert.Equal(ImprovementReviewOutcome.AcceptedForManualIntegration, verification.LastEntry!.Review!.Outcome);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ImprovementLedgerDetectsTamperingAndRefusesFurtherAppend()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "PikoImprovementLedgerTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "reviews.jsonl");
+        try
+        {
+            var report = OfflineCandidateEvaluator.Evaluate(OfflineRequest(CreateMeasurements(12)));
+            await ImprovementLedger.AppendAsync(path, report, DateTimeOffset.UtcNow);
+            var text = await File.ReadAllTextAsync(path);
+            await File.WriteAllTextAsync(path, text.Replace(
+                "\"CandidateVersion\":\"candidate-02\"",
+                "\"CandidateVersion\":\"candidate-03\"",
+                StringComparison.Ordinal));
+
+            var verification = await ImprovementLedger.VerifyAsync(path);
+            Assert.False(verification.IsValid);
+            Assert.Equal("entry_digest_mismatch", verification.Reason);
+            await Assert.ThrowsAsync<InvalidDataException>(() =>
+                ImprovementLedger.AppendAsync(path, report, DateTimeOffset.UtcNow));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FailedCandidateCannotBeAcceptedButCanBeRecordedAsRejected()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "PikoImprovementLedgerTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "reviews.jsonl");
+        try
+        {
+            var measurements = CreateMeasurements(12)
+                .Select((item, index) => item with { CandidateQuality = index == 0 ? 0.7 : item.CandidateQuality })
+                .ToArray();
+            var report = OfflineCandidateEvaluator.Evaluate(OfflineRequest(measurements));
+            Assert.False(ImprovementGate.Evaluate(report.Evaluation).EligibleForMaintainerReview);
+            await ImprovementLedger.AppendAsync(path, report, DateTimeOffset.UtcNow);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => ImprovementLedger.AppendReviewAsync(
+                path,
+                report.Evaluation.CandidateId,
+                "maintainer-01",
+                ImprovementReviewOutcome.AcceptedForManualIntegration,
+                "production-v1",
+                DateTimeOffset.UtcNow));
+            var rejected = await ImprovementLedger.AppendReviewAsync(
+                path,
+                report.Evaluation.CandidateId,
+                "maintainer-01",
+                ImprovementReviewOutcome.Rejected,
+                null,
+                DateTimeOffset.UtcNow);
+
+            Assert.Equal(ImprovementReviewOutcome.Rejected, rejected.Review!.Outcome);
+            Assert.True((await ImprovementLedger.VerifyAsync(path)).IsValid);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ImprovementCliEvaluatesReviewsAndVerifiesLedgerEndToEnd()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "PikoImprovementCliTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var inputPath = Path.Combine(root, "measurements.json");
+        var ledgerPath = Path.Combine(root, "ledger.jsonl");
+        try
+        {
+            var request = OfflineRequest(CreateMeasurements(12));
+            var input = JsonSerializer.Serialize(request, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+            await File.WriteAllTextAsync(inputPath, input);
+
+            Assert.Equal(0, await global::Program.Main(["evaluate", inputPath, ledgerPath]));
+            Assert.Equal(0, await global::Program.Main([
+                "review", ledgerPath, request.CandidateId, "maintainer-01", "accept", "production-v1"]));
+            var verification = await ImprovementLedger.VerifyAsync(ledgerPath);
+            Assert.True(verification.IsValid);
+            Assert.Equal(2, verification.EntryCount);
+            Assert.Equal(ImprovementReviewOutcome.AcceptedForManualIntegration, verification.LastEntry!.Review!.Outcome);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ImprovementCliRejectsUnexpectedFieldsThatCouldCarryPrivateText()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "PikoImprovementCliTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var inputPath = Path.Combine(root, "measurements.json");
+        var ledgerPath = Path.Combine(root, "ledger.jsonl");
+        try
+        {
+            var request = OfflineRequest(CreateMeasurements(12));
+            var input = JsonSerializer.Serialize(request, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+            await File.WriteAllTextAsync(inputPath, input.Insert(1, "\"prompt\":\"private conversation\","));
+
+            Assert.Equal(2, await global::Program.Main(["evaluate", inputPath, ledgerPath]));
+            Assert.False(File.Exists(ledgerPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static OfflineComparisonRequest OfflineRequest(IReadOnlyList<CandidateScenarioMeasurement> scenarios) => new(

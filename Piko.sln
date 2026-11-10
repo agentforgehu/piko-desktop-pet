@@ -20,6 +20,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Piko.Agent", "src\Piko.Agen
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Piko.Agent.Tests", "tests\Piko.Agent.Tests\Piko.Agent.Tests.csproj", "{20E9E897-AC35-43B0-8DD1-3F1FEC584EA7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Piko.Improvement.Cli", "src\Piko.Improvement.Cli\Piko.Improvement.Cli.csproj", "{5A0DFE68-97A6-4A12-A968-0EAEF3195A21}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Piko.Context.Windows", "src\Piko.Context.Windows\Piko.Context.Windows.csproj", "{58D25C7F-2183-454F-BB04-B14F97D09D1F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Piko.Runtime", "src\Piko.Runtime\Piko.Runtime.csproj", "{4B3B4BEF-2021-4B36-91B0-7E4A7FB02F50}"
@@ -82,6 +84,10 @@ Global
 		{20E9E897-AC35-43B0-8DD1-3F1FEC584EA7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{20E9E897-AC35-43B0-8DD1-3F1FEC584EA7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{20E9E897-AC35-43B0-8DD1-3F1FEC584EA7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5A0DFE68-97A6-4A12-A968-0EAEF3195A21}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5A0DFE68-97A6-4A12-A968-0EAEF3195A21}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5A0DFE68-97A6-4A12-A968-0EAEF3195A21}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5A0DFE68-97A6-4A12-A968-0EAEF3195A21}.Release|Any CPU.Build.0 = Release|Any CPU
 		{58D25C7F-2183-454F-BB04-B14F97D09D1F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{58D25C7F-2183-454F-BB04-B14F97D09D1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{58D25C7F-2183-454F-BB04-B14F97D09D1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
