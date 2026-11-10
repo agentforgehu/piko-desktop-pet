@@ -158,8 +158,8 @@ public sealed class MemoryStoreTests
 
             Assert.Equal(2, hits.Count);
             Assert.DoesNotContain(hits, hit => hit.Record.Provenance == MemoryProvenance.Hypothetical);
-            var stableConfirmed = Assert.Single(hits.Where(hit => hit.Record.Provenance == MemoryProvenance.UserConfirmed));
-            var decayedEvent = Assert.Single(hits.Where(hit => hit.Record.Kind == MemoryKind.Episodic));
+            var stableConfirmed = Assert.Single(hits, hit => hit.Record.Provenance == MemoryProvenance.UserConfirmed);
+            var decayedEvent = Assert.Single(hits, hit => hit.Record.Kind == MemoryKind.Episodic);
             Assert.True(stableConfirmed.Score > decayedEvent.Score);
             Assert.Equal("lexical_match_user_confirmed", stableConfirmed.ActivationReason);
             Assert.True(decayedEvent.RecencyWeight < 0.5);
@@ -181,10 +181,14 @@ public sealed class MemoryStoreTests
         var id = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
         using (var protector = new AesGcmMemoryProtector(key))
-        await using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString()))
+        await using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = path,
+            Pooling = false
+        }.ToString()))
         {
             await connection.OpenAsync();
-            var command = connection.CreateCommand();
+            await using var command = connection.CreateCommand();
             command.CommandText = """
                 CREATE TABLE memories (
                     id TEXT PRIMARY KEY, kind INTEGER NOT NULL, created_at TEXT NOT NULL,

@@ -45,7 +45,7 @@ public sealed class SqliteMemoryStore : IDisposable
 
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-        var command = connection.CreateCommand();
+        await using var command = connection.CreateCommand();
         command.Transaction = (SqliteTransaction)transaction;
         command.CommandText = """
             INSERT INTO memories
@@ -67,7 +67,7 @@ public sealed class SqliteMemoryStore : IDisposable
         command.Parameters.AddWithValue("$provenance", (int)draft.Provenance);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-        var trim = connection.CreateCommand();
+        await using var trim = connection.CreateCommand();
         trim.Transaction = (SqliteTransaction)transaction;
         trim.CommandText = """
             DELETE FROM memories
@@ -102,7 +102,7 @@ public sealed class SqliteMemoryStore : IDisposable
         ThrowIfDisposed();
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        var command = connection.CreateCommand();
+        await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance
             FROM memories
@@ -131,7 +131,7 @@ public sealed class SqliteMemoryStore : IDisposable
 
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        var command = connection.CreateCommand();
+        await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, kind, created_at, updated_at, expires_at, sensitivity, source, summary_cipher, payload_cipher, provenance
             FROM memories
@@ -212,7 +212,7 @@ public sealed class SqliteMemoryStore : IDisposable
         ThrowIfDisposed();
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        var command = connection.CreateCommand();
+        await using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM memories WHERE id = $id;";
         command.Parameters.AddWithValue("$id", id.ToString("N"));
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
@@ -231,7 +231,7 @@ public sealed class SqliteMemoryStore : IDisposable
         var summary = _protector.Protect(draft.Summary, $"{id:N}:summary");
         var payload = _protector.Protect(draft.Payload, $"{id:N}:payload");
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        var command = connection.CreateCommand();
+        await using var command = connection.CreateCommand();
         command.CommandText = """
             UPDATE memories
             SET kind = $kind,
@@ -264,10 +264,10 @@ public sealed class SqliteMemoryStore : IDisposable
         ThrowIfDisposed();
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        var command = connection.CreateCommand();
+        await using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM memories;";
         var deleted = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        var compact = connection.CreateCommand();
+        await using var compact = connection.CreateCommand();
         compact.CommandText = "VACUUM;";
         await compact.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         return deleted;
@@ -293,7 +293,7 @@ public sealed class SqliteMemoryStore : IDisposable
         ThrowIfDisposed();
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        var command = connection.CreateCommand();
+        await using var command = connection.CreateCommand();
         command.CommandText = $"DELETE FROM memories WHERE {predicate};";
         command.Parameters.AddWithValue("$value", value);
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -315,7 +315,7 @@ public sealed class SqliteMemoryStore : IDisposable
             }
 
             await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-            var command = connection.CreateCommand();
+            await using var command = connection.CreateCommand();
             command.CommandText = """
                 CREATE TABLE IF NOT EXISTS memories (
                     id TEXT PRIMARY KEY,
@@ -334,7 +334,7 @@ public sealed class SqliteMemoryStore : IDisposable
                 """;
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-            var columns = connection.CreateCommand();
+            await using var columns = connection.CreateCommand();
             columns.CommandText = "PRAGMA table_info(memories);";
             var columnNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             await using (var reader = await columns.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
@@ -346,7 +346,7 @@ public sealed class SqliteMemoryStore : IDisposable
             }
             if (!columnNames.Contains("provenance"))
             {
-                var migrate = connection.CreateCommand();
+                await using var migrate = connection.CreateCommand();
                 migrate.CommandText = "ALTER TABLE memories ADD COLUMN provenance INTEGER NOT NULL DEFAULT 0;";
                 await migrate.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -362,7 +362,7 @@ public sealed class SqliteMemoryStore : IDisposable
     {
         var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        var command = connection.CreateCommand();
+        await using var command = connection.CreateCommand();
         command.CommandText = "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;";
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         return connection;
