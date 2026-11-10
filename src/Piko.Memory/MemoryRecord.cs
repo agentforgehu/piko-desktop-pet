@@ -9,7 +9,9 @@ public sealed record MemoryDraft(
     DataSensitivity Sensitivity,
     string Source,
     DateTimeOffset? ExpiresAt = null,
-    MemoryProvenance Provenance = MemoryProvenance.ObservedEvent);
+    MemoryProvenance Provenance = MemoryProvenance.ObservedEvent,
+    DateTimeOffset? ValidFrom = null,
+    DateTimeOffset? ValidUntil = null);
 
 public sealed record MemoryRecord(
     Guid Id,
@@ -22,7 +24,9 @@ public sealed record MemoryRecord(
     string Summary,
     string Payload,
     MemoryProvenance Provenance = MemoryProvenance.ObservedEvent,
-    bool IsSuperseded = false);
+    bool IsSuperseded = false,
+    DateTimeOffset? ValidFrom = null,
+    DateTimeOffset? ValidUntil = null);
 
 public sealed record MemorySearchHit(
     MemoryRecord Record,

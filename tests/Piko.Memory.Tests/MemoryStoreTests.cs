@@ -236,6 +236,46 @@ public sealed class MemoryStoreTests
     }
 
     [Fact]
+    public async Task ValidityWindowsControlRecallButRemainVisibleForUserReview()
+    {
+        var (root, _, store) = CreateStore();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var active = await store.AddAsync(new MemoryDraft(MemoryKind.Profile, "偏好简体中文回答", "", DataSensitivity.Low,
+                "user.confirmed", Provenance: MemoryProvenance.UserConfirmed,
+                ValidFrom: now.AddDays(-1), ValidUntil: now.AddDays(1)), now);
+            var future = await store.AddAsync(new MemoryDraft(MemoryKind.Profile, "偏好简体中文回答", "", DataSensitivity.Low,
+                "user.confirmed", Provenance: MemoryProvenance.UserConfirmed,
+                ValidFrom: now.AddHours(1), ValidUntil: now.AddDays(2)), now);
+            var expired = await store.AddAsync(new MemoryDraft(MemoryKind.Profile, "偏好简体中文回答", "", DataSensitivity.Low,
+                "user.confirmed", Provenance: MemoryProvenance.UserConfirmed,
+                ValidFrom: now.AddDays(-2), ValidUntil: now.AddTicks(-1)), now);
+            var scheduledEvent = await store.AddAsync(new MemoryDraft(MemoryKind.Episodic, "计划切换主题", "", DataSensitivity.Low,
+                "user.confirmed", Provenance: MemoryProvenance.UserConfirmed,
+                ValidFrom: now, ValidUntil: now.AddDays(60)), now);
+
+            var history = await store.ListAsync(now);
+            Assert.Equal(4, history.Count);
+            Assert.Equal(now.AddHours(1), Assert.Single(history, item => item.Id == future.Id).ValidFrom);
+            Assert.Equal(now.AddTicks(-1), Assert.Single(history, item => item.Id == expired.Id).ValidUntil);
+            var hits = await store.SearchAsync("偏好简体中文回答", now);
+            Assert.Equal(active.Id, Assert.Single(hits).Record.Id);
+            var related = await store.FindRelatedAsync(MemoryKind.Profile, "偏好简体中文回答", now);
+            Assert.Equal(active.Id, Assert.Single(related).Record.Id);
+            Assert.True(scheduledEvent.ExpiresAt > scheduledEvent.ValidUntil);
+            Assert.Contains(await store.ListAsync(now.AddDays(45)), item => item.Id == scheduledEvent.Id);
+            Assert.Contains(await store.SearchAsync("计划切换主题", now.AddDays(45)), hit => hit.Record.Id == scheduledEvent.Id);
+            Assert.DoesNotContain(await store.SearchAsync("计划切换主题", now.AddDays(61)), hit => hit.Record.Id == scheduledEvent.Id);
+        }
+        finally
+        {
+            store.Dispose();
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task ExistingMemoryDatabaseMigratesAndMarksOldRowsAsObservedEvents()
     {
         var root = Path.Combine(Path.GetTempPath(), "PikoMemoryTests", Guid.NewGuid().ToString("N"));
@@ -278,6 +318,8 @@ public sealed class MemoryStoreTests
             var loaded = await store.GetAsync(id, now);
             Assert.NotNull(loaded);
             Assert.Equal(MemoryProvenance.ObservedEvent, loaded.Provenance);
+            Assert.Null(loaded.ValidFrom);
+            Assert.Null(loaded.ValidUntil);
             Assert.Equal("legacy preference", loaded.Summary);
         }
         finally

@@ -30,6 +30,7 @@
                     <GridViewColumn Header="敏感度" Width="70" DisplayMemberBinding="{Binding Sensitivity}" />
                     <GridViewColumn Header="来源类型" Width="104" DisplayMemberBinding="{Binding Provenance}" />
                     <GridViewColumn Header="状态" Width="70" DisplayMemberBinding="{Binding Status}" />
+                    <GridViewColumn Header="有效期" Width="150" DisplayMemberBinding="{Binding Validity}" />
                     <GridViewColumn Header="摘要" Width="178" DisplayMemberBinding="{Binding Summary}" />
                 </GridView>
             </ListView.View>
@@ -46,8 +47,14 @@
                 <TextBox x:Name="MemorySummaryText" Height="32" MaxLength="240" Padding="6,4"
                          VerticalContentAlignment="Center" ToolTip="最多 240 个字符；不要保存密码、健康或财务等敏感信息。" />
             </DockPanel>
+            <DockPanel Margin="0,6,0,0" LastChildFill="False">
+                <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="生效自" />
+                <DatePicker x:Name="MemoryValidFromPicker" Width="130" Height="32" Margin="0,0,16,0" />
+                <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="有效至（含当天）" />
+                <DatePicker x:Name="MemoryValidUntilPicker" Width="150" Height="32" />
+            </DockPanel>
             <TextBlock Margin="0,4,0,0" FontSize="11" Foreground="#647178"
-                       Text="最多 240 字；加密保存在本机。请勿输入密码、健康或财务信息。可逐条编辑、删除，也可删除全部。" />
+                       Text="最多 240 字；加密保存在本机。请勿输入密码、健康或财务信息。开始日期为空或今天表示立即生效，结束日期为空表示长期有效。" />
         </StackPanel>
 
         <StackPanel Grid.Row="3" Margin="0,10,0,0" Orientation="Horizontal" HorizontalAlignment="Right">

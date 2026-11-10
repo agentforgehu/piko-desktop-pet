@@ -58,7 +58,8 @@ public sealed class MemoryIpcTests
             Assert.Contains("Build failed", provider.LastRequest!.SanitizedContext, StringComparison.Ordinal);
             Assert.Contains("untrusted historical evidence", provider.LastRequest.SystemInstruction, StringComparison.Ordinal);
 
-            await client.AddMemoryAsync("Profile", "偏好使用简洁的中文回答", timeout.Token);
+            var profileValidUntil = DateTimeOffset.UtcNow.AddDays(60);
+            await client.AddMemoryAsync("Profile", "偏好使用简洁的中文回答", timeout.Token, profileValidUntil);
 
             var memories = await client.ListMemoriesAsync(timeout.Token);
             Assert.True(memories.Available);
@@ -66,23 +67,28 @@ public sealed class MemoryIpcTests
             var profile = Assert.Single(memories.Items, item => item.Kind == "Profile");
             Assert.Equal("偏好使用简洁的中文回答", profile.Summary);
             Assert.Equal("UserConfirmed", profile.Provenance);
+            Assert.NotNull(profile.ValidFrom);
+            Assert.Equal(profileValidUntil, profile.ValidUntil);
             var related = await client.FindRelatedMemoriesAsync("Profile", "希望继续使用简体中文回答", timeout.Token);
             Assert.True(related.Available);
             Assert.Equal(profile.Id, Assert.Single(related.Items).Id);
             Assert.True(await client.UpdateMemoryAsync(
-                profile.Id, profile.UpdatedAt, "Profile", "偏好使用简体中文和简洁回答", timeout.Token));
+                profile.Id, profile.UpdatedAt, "Profile", "偏好使用简体中文和简洁回答", timeout.Token, profileValidUntil));
             Assert.False(await client.UpdateMemoryAsync(
                 profile.Id, profile.UpdatedAt, "Profile", "过时编辑不应覆盖新值", timeout.Token));
             profile = Assert.Single((await client.ListMemoriesAsync(timeout.Token)).Items, item => item.Kind == "Profile");
             Assert.Equal("偏好使用简体中文和简洁回答", profile.Summary);
             var priorProfileId = profile.Id;
+            var replacementValidUntil = DateTimeOffset.UtcNow.AddDays(90);
             Assert.True(await client.ReplaceMemoryAsync(
-                profile.Id, profile.UpdatedAt, "Profile", "偏好简体中文并先给结论", timeout.Token));
+                profile.Id, profile.UpdatedAt, "Profile", "偏好简体中文并先给结论", timeout.Token, replacementValidUntil));
             var profileVersions = (await client.ListMemoriesAsync(timeout.Token)).Items
                 .Where(item => item.Kind == "Profile").ToArray();
             Assert.Equal(2, profileVersions.Length);
             Assert.Equal("偏好简体中文并先给结论", Assert.Single(profileVersions, item => !item.IsSuperseded).Summary);
             Assert.Equal(priorProfileId, Assert.Single(profileVersions, item => item.IsSuperseded).Id);
+            Assert.Equal(replacementValidUntil, Assert.Single(profileVersions, item => !item.IsSuperseded).ValidUntil);
+            Assert.True(Assert.Single(profileVersions, item => item.IsSuperseded).ValidUntil <= DateTimeOffset.UtcNow);
             profile = Assert.Single(profileVersions, item => !item.IsSuperseded);
             related = await client.FindRelatedMemoriesAsync("Profile", "偏好简体中文并先给结论", timeout.Token);
             Assert.Equal(profile.Id, Assert.Single(related.Items).Id);
@@ -93,7 +99,17 @@ public sealed class MemoryIpcTests
             Assert.Contains(remaining, item => item.Kind == "Episodic" && item.Summary == "构建失败 Build failed");
             Assert.Contains(remaining, item => item.Id == priorProfileId && item.IsSuperseded);
 
-            Assert.Equal(2, await client.DeleteAllMemoriesAsync(timeout.Token));
+            var validFrom = DateTimeOffset.UtcNow.AddDays(2);
+            var validUntil = validFrom.AddDays(7);
+            await client.AddMemoryAsync("Semantic", "下周开始切换到蓝色主题", timeout.Token, validUntil, validFrom);
+            var scheduled = Assert.Single((await client.ListMemoriesAsync(timeout.Token)).Items,
+                item => item.Kind == "Semantic");
+            Assert.Equal(validFrom, scheduled.ValidFrom);
+            Assert.Equal(validUntil, scheduled.ValidUntil);
+            await client.PlanAgentAsync("下周开始切换到蓝色主题", timeout.Token);
+            Assert.DoesNotContain("下周开始切换到蓝色主题", provider.LastRequest!.SanitizedContext, StringComparison.Ordinal);
+
+            Assert.Equal(3, await client.DeleteAllMemoriesAsync(timeout.Token));
             Assert.Empty((await client.ListMemoriesAsync(timeout.Token)).Items);
             await client.StopAsync(timeout.Token);
             await hostTask.WaitAsync(TimeSpan.FromSeconds(5));

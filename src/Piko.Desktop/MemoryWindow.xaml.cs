@@ -5,7 +5,7 @@ namespace Piko.Desktop;
 
 public partial class MemoryWindow : Window
 {
-    private sealed record MemoryListItem(string Id, DateTimeOffset UpdatedAt, string Created, string Kind, string Sensitivity, string Provenance, string Status, bool IsSuperseded, string Summary);
+    private sealed record MemoryListItem(string Id, DateTimeOffset UpdatedAt, DateTimeOffset? ValidFrom, DateTimeOffset? ValidUntil, string Created, string Kind, string Sensitivity, string Provenance, string Status, string Validity, bool IsSuperseded, string Summary);
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private readonly RuntimeProcessManager _runtime;
@@ -34,6 +34,18 @@ public partial class MemoryWindow : Window
         try
         {
             var summary = MemorySummaryText.Text.Trim();
+            if (MemoryValidFromPicker.SelectedDate is { } selectedStart && selectedStart.Date < DateTime.Today)
+            {
+                StatusText.Text = "不支持回溯生效日期；如需记录过去事实，请在摘要中说明发生时间。";
+                return;
+            }
+            var validFrom = GetValidFrom(MemoryValidFromPicker.SelectedDate);
+            var validUntil = GetValidUntilExclusive(MemoryValidUntilPicker.SelectedDate);
+            if (validUntil is { } until && until <= (validFrom ?? DateTimeOffset.UtcNow))
+            {
+                StatusText.Text = "结束日期必须晚于生效日期。";
+                return;
+            }
             var related = await _runtime.FindRelatedMemoriesAsync(kind, summary);
             if (!related.Available)
             {
@@ -60,8 +72,13 @@ public partial class MemoryWindow : Window
                 }
                 if (choice == MessageBoxResult.Yes)
                 {
+                    if (validFrom is { } futureStart && futureStart > DateTimeOffset.UtcNow)
+                    {
+                        StatusText.Text = "未来生效的记忆不能立即替换当前版本；请选择“否”将其单独保存。";
+                        return;
+                    }
                     var replaced = await _runtime.ReplaceMemoryAsync(
-                        closest.Id, closest.UpdatedAt, kind, summary);
+                        closest.Id, closest.UpdatedAt, kind, summary, validUntil: validUntil, validFrom: validFrom);
                     if (!replaced)
                     {
                         StatusText.Text = "相关记忆已被修改或删除，请刷新后重试。";
@@ -72,16 +89,18 @@ public partial class MemoryWindow : Window
                 }
                 else
                 {
-                    await _runtime.AddMemoryAsync(kind, summary);
+                    await _runtime.AddMemoryAsync(kind, summary, validUntil: validUntil, validFrom: validFrom);
                     StatusText.Text = "已将相关内容作为独立记忆保存。";
                 }
             }
             else
             {
-                await _runtime.AddMemoryAsync(kind, summary);
+                await _runtime.AddMemoryAsync(kind, summary, validUntil: validUntil, validFrom: validFrom);
                 StatusText.Text = "已加密保存这条记忆。";
             }
             MemorySummaryText.Clear();
+            MemoryValidFromPicker.SelectedDate = null;
+            MemoryValidUntilPicker.SelectedDate = null;
             await RefreshAsync();
         }
         catch (Exception exception)
@@ -134,12 +153,21 @@ public partial class MemoryWindow : Window
             StatusText.Text = "该版本已归档，请选中当前版本。";
             return;
         }
+        if ((selected.ValidFrom is { } activeStart && activeStart > DateTimeOffset.UtcNow) ||
+            (selected.ValidUntil is { } activeEnd && activeEnd <= DateTimeOffset.UtcNow))
+        {
+            StatusText.Text = "该记忆不在有效期内。若要恢复，请作为新记忆保存并重新设置有效期。";
+            return;
+        }
 
         if (MemoryKindCombo.Items.OfType<System.Windows.Controls.ComboBoxItem>()
             .FirstOrDefault(item => string.Equals(item.Tag as string, selected.Kind, StringComparison.Ordinal)) is { } kindItem)
         {
             MemoryKindCombo.SelectedItem = kindItem;
         }
+
+        MemoryValidUntilPicker.SelectedDate = selected.ValidUntil?.ToLocalTime().Date;
+        MemoryValidFromPicker.SelectedDate = selected.ValidFrom?.ToLocalTime().Date;
 
         if (string.IsNullOrWhiteSpace(MemorySummaryText.Text))
         {
@@ -157,9 +185,29 @@ public partial class MemoryWindow : Window
 
         try
         {
-            var replaced = await _runtime.ReplaceMemoryAsync(selected.Id, selected.UpdatedAt, kind, MemorySummaryText.Text.Trim());
+            if (MemoryValidFromPicker.SelectedDate is { } selectedStart && selectedStart.Date < DateTime.Today)
+            {
+                StatusText.Text = "不支持回溯生效日期；请填写当前或未来日期。";
+                return;
+            }
+            var validFrom = GetValidFrom(MemoryValidFromPicker.SelectedDate);
+            var validUntil = GetValidUntilExclusive(MemoryValidUntilPicker.SelectedDate);
+            if (validUntil is { } until && until <= (validFrom ?? DateTimeOffset.UtcNow))
+            {
+                StatusText.Text = "结束日期必须晚于生效日期。";
+                return;
+            }
+            if (validFrom is { } futureStart && futureStart > DateTimeOffset.UtcNow)
+            {
+                StatusText.Text = "未来生效的内容请保存为独立记忆，不能立即替换当前版本。";
+                return;
+            }
+            var replaced = await _runtime.ReplaceMemoryAsync(selected.Id, selected.UpdatedAt, kind,
+                MemorySummaryText.Text.Trim(), validUntil: validUntil, validFrom: validFrom);
             StatusText.Text = replaced ? "已保存为新版本，旧版本已归档。" : "这条记忆已被修改、过期或删除，请刷新后重试。";
             MemorySummaryText.Clear();
+            MemoryValidFromPicker.SelectedDate = null;
+            MemoryValidUntilPicker.SelectedDate = null;
             await RefreshAsync();
         }
         catch (Exception exception)
@@ -210,11 +258,14 @@ public partial class MemoryWindow : Window
             MemoryList.ItemsSource = result.Items.Select(item => new MemoryListItem(
                 item.Id,
                 item.UpdatedAt,
+                item.ValidFrom,
+                item.ValidUntil,
                 item.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
                 item.Kind,
                 item.Sensitivity,
                 item.Provenance,
-                item.IsSuperseded ? "已被替代" : "当前",
+                GetMemoryStatus(item),
+                FormatValidity(item.ValidFrom, item.ValidUntil),
                 item.IsSuperseded,
                 item.Summary)).ToArray();
             StatusText.Text = $"共 {result.Items.Count} 条。用户添加的偏好/语义记忆默认不过期；事件记忆按类型到期。";
@@ -224,5 +275,59 @@ public partial class MemoryWindow : Window
             _logger.Error("Could not list memories", exception);
             StatusText.Text = "读取失败，请检查后台状态。";
         }
+    }
+
+    private static string GetMemoryStatus(Piko.Runtime.Ipc.RuntimeMemoryItem item)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (item.IsSuperseded) return "已替代";
+        if (item.ValidFrom is { } validFrom && validFrom > now) return "未生效";
+        if (item.ValidUntil is { } validUntil && validUntil <= now) return "已失效";
+        return "当前";
+    }
+
+    private static string FormatValidity(DateTimeOffset? validFrom, DateTimeOffset? validUntil)
+    {
+        var start = validFrom?.ToLocalTime().ToString("yyyy-MM-dd") ?? "立即";
+        var end = validUntil?.ToLocalTime().AddTicks(-1).ToString("yyyy-MM-dd") ?? "长期";
+        return $"{start} 至 {end}";
+    }
+
+    private static DateTimeOffset? GetValidUntilExclusive(DateTime? selectedDate)
+    {
+        if (selectedDate is null)
+        {
+            return null;
+        }
+        var localEnd = DateTime.SpecifyKind(selectedDate.Value.Date.AddDays(1), DateTimeKind.Unspecified);
+        var zone = TimeZoneInfo.Local;
+        for (var minute = 0; zone.IsInvalidTime(localEnd) && minute < 180; minute++)
+        {
+            localEnd = localEnd.AddMinutes(1);
+        }
+        if (zone.IsInvalidTime(localEnd))
+        {
+            throw new ArgumentException("无法解析所选日期的本地时区边界。", nameof(selectedDate));
+        }
+        return new DateTimeOffset(localEnd, zone.GetUtcOffset(localEnd)).ToUniversalTime();
+    }
+
+    private static DateTimeOffset? GetValidFrom(DateTime? selectedDate)
+    {
+        if (selectedDate is null || selectedDate.Value.Date <= DateTime.Today)
+        {
+            return null;
+        }
+        var localStart = DateTime.SpecifyKind(selectedDate.Value.Date, DateTimeKind.Unspecified);
+        var zone = TimeZoneInfo.Local;
+        for (var minute = 0; zone.IsInvalidTime(localStart) && minute < 180; minute++)
+        {
+            localStart = localStart.AddMinutes(1);
+        }
+        if (zone.IsInvalidTime(localStart))
+        {
+            throw new ArgumentException("无法解析所选日期的本地时区边界。", nameof(selectedDate));
+        }
+        return new DateTimeOffset(localStart, zone.GetUtcOffset(localStart)).ToUniversalTime();
     }
 }

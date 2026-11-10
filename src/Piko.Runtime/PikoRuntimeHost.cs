@@ -437,10 +437,12 @@ public sealed class PikoRuntimeHost
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
 
+                var now = DateTimeOffset.UtcNow;
                 if (memoryRequest is null ||
                     !Enum.TryParse<MemoryKind>(memoryRequest.Kind, ignoreCase: true, out var memoryKind) ||
                     memoryKind is not (MemoryKind.Profile or MemoryKind.Semantic or MemoryKind.Episodic) ||
-                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240)
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
+                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now))
                 {
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
@@ -459,8 +461,10 @@ public sealed class PikoRuntimeHost
                         summary,
                         DataSensitivity.Low,
                         "user.confirmed",
-                        Provenance: MemoryProvenance.UserConfirmed),
-                    DateTimeOffset.UtcNow,
+                        Provenance: MemoryProvenance.UserConfirmed,
+                        ValidFrom: memoryRequest.ValidFrom?.ToUniversalTime() ?? now,
+                        ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime()),
+                    now,
                     requestCancellation).ConfigureAwait(false);
                 return RuntimeResponse.Ok(request.RequestId, "memory.added", new { added = true });
             }
@@ -500,7 +504,7 @@ public sealed class PikoRuntimeHost
                     related.Select(hit => hit.Record).Select(memory => new RuntimeMemoryItem(
                         memory.Id.ToString("N"), memory.Kind.ToString(), memory.CreatedAt, memory.UpdatedAt,
                         memory.ExpiresAt, memory.Sensitivity.ToString(), memory.Summary,
-                        memory.Provenance.ToString(), memory.IsSuperseded)).ToArray()));
+                        memory.Provenance.ToString(), memory.IsSuperseded, memory.ValidFrom, memory.ValidUntil)).ToArray()));
             }
 
             if (request.Type == "memory.update")
@@ -515,10 +519,12 @@ public sealed class PikoRuntimeHost
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
 
+                var now = DateTimeOffset.UtcNow;
                 if (memoryRequest is null || !Guid.TryParseExact(memoryRequest.Id, "N", out var memoryId) ||
                     memoryRequest.ExpectedUpdatedAt == default ||
                     memoryRequest.Kind is not ("Profile" or "Semantic" or "Episodic") ||
-                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240)
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
+                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now))
                 {
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
@@ -535,12 +541,14 @@ public sealed class PikoRuntimeHost
                     memoryRequest.Summary.Trim(),
                     DataSensitivity.Low,
                     "user.confirmed",
-                    Provenance: MemoryProvenance.UserConfirmed);
+                    Provenance: MemoryProvenance.UserConfirmed,
+                    ValidFrom: memoryRequest.ValidFrom?.ToUniversalTime() ?? now,
+                    ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime());
                 var updated = await activeMemoryStore.UpdateAsync(
                         memoryId,
                         memoryRequest.ExpectedUpdatedAt,
                         draft,
-                        DateTimeOffset.UtcNow,
+                        now,
                         requestCancellation)
                     .ConfigureAwait(false);
                 return RuntimeResponse.Ok(request.RequestId, "memory.updated-one", new { updated });
@@ -558,10 +566,12 @@ public sealed class PikoRuntimeHost
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
 
+                var now = DateTimeOffset.UtcNow;
                 if (memoryRequest is null || !Guid.TryParseExact(memoryRequest.Id, "N", out var memoryId) ||
                     memoryRequest.ExpectedUpdatedAt == default ||
                     memoryRequest.Kind is not ("Profile" or "Semantic" or "Episodic") ||
-                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240)
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
+                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now))
                 {
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
@@ -574,8 +584,10 @@ public sealed class PikoRuntimeHost
                 var summary = memoryRequest.Summary.Trim();
                 var replacement = await activeMemoryStore.ReplaceAsync(memoryId, memoryRequest.ExpectedUpdatedAt,
                     new MemoryDraft(Enum.Parse<MemoryKind>(memoryRequest.Kind), summary, summary,
-                        DataSensitivity.Low, "user.confirmed", Provenance: MemoryProvenance.UserConfirmed),
-                    DateTimeOffset.UtcNow, requestCancellation).ConfigureAwait(false);
+                        DataSensitivity.Low, "user.confirmed", Provenance: MemoryProvenance.UserConfirmed,
+                        ValidFrom: memoryRequest.ValidFrom?.ToUniversalTime() ?? now,
+                        ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime()),
+                    now, requestCancellation).ConfigureAwait(false);
                 return RuntimeResponse.Ok(request.RequestId, "memory.replaced-one", new { replaced = replacement is not null });
             }
 
@@ -638,7 +650,9 @@ public sealed class PikoRuntimeHost
                             memory.Sensitivity.ToString(),
                             memory.Summary,
                             memory.Provenance.ToString(),
-                            memory.IsSuperseded)).ToArray()));
+                            memory.IsSuperseded,
+                            memory.ValidFrom,
+                            memory.ValidUntil)).ToArray()));
             }
 
             if (request.Type == "memory.delete-all")
@@ -724,6 +738,13 @@ public sealed class PikoRuntimeHost
                 // Normal runtime shutdown.
             }
         }
+    }
+
+    private static bool IsValidMemoryWindow(DateTimeOffset? validFrom, DateTimeOffset? validUntil, DateTimeOffset now)
+    {
+        var maximum = now.AddYears(50);
+        return (validFrom is null || validFrom.Value >= now && validFrom.Value <= maximum) &&
+               (validUntil is null || validUntil.Value <= maximum && validUntil.Value > (validFrom ?? now));
     }
 
     private static RuntimeStatusSnapshot ApplyAcceptedUpdate(
