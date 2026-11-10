@@ -32,6 +32,8 @@ public static class OfflineFixtureDatasetManifestLoader
             throw new InvalidDataException($"Fixture manifest must be between 1 and {MaximumManifestBytes} bytes.");
         }
 
+        using var document = JsonDocument.Parse(json);
+        EnsureNoDuplicateProperties(document.RootElement);
         var manifest = JsonSerializer.Deserialize<OfflineFixtureDatasetManifest>(json, InputOptions)
             ?? throw new InvalidDataException("Fixture manifest is empty or invalid.");
         if (!IsSha256(manifest.DatasetSha256))
@@ -50,4 +52,27 @@ public static class OfflineFixtureDatasetManifestLoader
 
     private static bool IsSha256(string? value) => value is { Length: 64 } &&
         value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    private static void EnsureNoDuplicateProperties(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var property in element.EnumerateObject())
+            {
+                if (!names.Add(property.Name))
+                {
+                    throw new InvalidDataException("Fixture manifests cannot contain duplicate JSON properties.");
+                }
+                EnsureNoDuplicateProperties(property.Value);
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                EnsureNoDuplicateProperties(item);
+            }
+        }
+    }
 }

@@ -146,6 +146,13 @@ public sealed class ImprovementGateTests
             manifest.DatasetId, manifest.DatasetVersion, scenarios.Reverse().ToArray()).DatasetSha256);
         Assert.NotEqual(manifest.DatasetSha256, OfflineFixtureDatasetManifestLoader.Create(
             manifest.DatasetId, "v2", scenarios).DatasetSha256);
+        var serializedText = System.Text.Encoding.UTF8.GetString(serialized);
+        var duplicatePropertyJson = serializedText.Replace(
+            "\"datasetId\":\"piko-cognitive\"",
+            "\"datasetId\":\"piko-cognitive\",\"datasetId\":\"shadow\"",
+            StringComparison.Ordinal);
+        Assert.Throws<InvalidDataException>(() => OfflineFixtureDatasetManifestLoader.Parse(
+            System.Text.Encoding.UTF8.GetBytes(duplicatePropertyJson)));
 
         var tampered = manifest with
         {
