@@ -94,7 +94,7 @@ public sealed class ImprovementGateTests
 
         var report = await PairedProviderMeasurementRunner.RunAsync(
             baseline, candidate, "candidate-1", ImprovementRisk.Low,
-            "baseline-1", "candidate-1", "fixtures-1", "oracle-1", scenarios);
+            "baseline-1", "candidate-1", "oracle-1", scenarios);
 
         Assert.Equal(10, baseline.Calls);
         Assert.Equal(10, candidate.Calls);
@@ -104,6 +104,13 @@ public sealed class ImprovementGateTests
         Assert.False(report.Evaluation.SafetyPassed);
         Assert.True(report.Evaluation.PrivacyPassed);
         Assert.Contains("regression_gate_failed", ImprovementGate.Evaluate(report.Evaluation).Reasons);
+        Assert.Matches("^[a-f0-9]{64}$", report.DatasetVersion);
+        var reordered = await PairedProviderMeasurementRunner.RunAsync(
+            new FixtureProvider(_ => "answer verified"),
+            new FixtureProvider(_ => "answer verified"),
+            "candidate-1", ImprovementRisk.Low, "baseline-1", "candidate-1", "oracle-1",
+            scenarios.Reverse().ToArray());
+        Assert.Equal(report.DatasetVersion, reordered.DatasetVersion);
     }
 
     [Fact]
@@ -116,7 +123,7 @@ public sealed class ImprovementGateTests
 
         await Assert.ThrowsAsync<InvalidDataException>(() => PairedProviderMeasurementRunner.RunAsync(
             provider, provider, "candidate-1", ImprovementRisk.Low,
-            "baseline-1", "candidate-1", "fixtures-1", "oracle-1", scenario));
+            "baseline-1", "candidate-1", "oracle-1", scenario));
     }
 
     [Fact]

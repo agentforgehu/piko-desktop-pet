@@ -26,7 +26,7 @@ public static class Program
             {
                 return await EvaluateAsync(args[1], args[2]).ConfigureAwait(false);
             }
-            if (args.Length is 11 or 12 && string.Equals(args[0], "run-local", StringComparison.Ordinal))
+            if (args.Length is 10 or 11 && string.Equals(args[0], "run-local", StringComparison.Ordinal))
             {
                 return await RunLocalAsync(args).ConfigureAwait(false);
             }
@@ -37,7 +37,7 @@ public static class Program
 
             Console.Error.WriteLine(
                 "Usage: piko-improvement evaluate <paired-measurements.json> <local-ledger.jsonl>\n" +
-                "   or: piko-improvement run-local <fixtures.json> <local-ledger.jsonl> <candidate-id> <risk> <baseline-version> <candidate-version> <dataset-version> <evaluator-version> <baseline-model> <candidate-model> [loopback-endpoint]\n" +
+                "   or: piko-improvement run-local <fixtures.json> <local-ledger.jsonl> <candidate-id> <risk> <baseline-version> <candidate-version> <evaluator-version> <baseline-model> <candidate-model> [loopback-endpoint]\n" +
                 "   or: piko-improvement review <local-ledger.jsonl> <candidate-id> <reviewer-id> <accept|reject> [rollback-version]");
             return 2;
         }
@@ -60,11 +60,11 @@ public static class Program
             throw new ArgumentException("Risk must be Low, Medium, or High.");
         }
 
-        var endpoint = args.Length == 12 ? new Uri(args[11], UriKind.Absolute) : new Uri("http://127.0.0.1:11434/v1/");
+        var endpoint = args.Length == 11 ? new Uri(args[10], UriKind.Absolute) : new Uri("http://127.0.0.1:11434/v1/");
         var providerOptions = new OpenAiCompatibleChatOptions { Endpoint = endpoint };
         using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(100) };
-        var baseline = new OpenAiCompatibleChatProvider(httpClient, providerOptions with { Model = args[9] });
-        var candidate = new OpenAiCompatibleChatProvider(httpClient, providerOptions with { Model = args[10] });
+        var baseline = new OpenAiCompatibleChatProvider(httpClient, providerOptions with { Model = args[8] });
+        var candidate = new OpenAiCompatibleChatProvider(httpClient, providerOptions with { Model = args[9] });
         var scenarios = JsonSerializer.Deserialize<OfflineFixtureScenario[]>(
             await File.ReadAllBytesAsync(args[1]).ConfigureAwait(false), InputOptions)
             ?? throw new InvalidDataException("Fixture document is empty or invalid.");
@@ -76,7 +76,6 @@ public static class Program
             args[5],
             args[6],
             args[7],
-            args[8],
             scenarios).ConfigureAwait(false);
         var entry = await ImprovementLedger.AppendAsync(args[2], report, DateTimeOffset.UtcNow).ConfigureAwait(false);
         var verification = await ImprovementLedger.VerifyAsync(args[2]).ConfigureAwait(false);

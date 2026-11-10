@@ -206,6 +206,36 @@ public sealed class MemoryStoreTests
     }
 
     [Fact]
+    public async Task RelatedMemorySuggestionsAreBoundedAndNeverLabelContradictions()
+    {
+        var (root, _, store) = CreateStore();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            await store.AddAsync(new MemoryDraft(MemoryKind.Profile, "偏好使用简体中文回答", "", DataSensitivity.Low,
+                "user.confirmed", Provenance: MemoryProvenance.UserConfirmed), now);
+            await store.AddAsync(new MemoryDraft(MemoryKind.Profile, "偏好使用英文回答", "", DataSensitivity.Low,
+                "user.confirmed", Provenance: MemoryProvenance.UserConfirmed), now.AddSeconds(1));
+            await store.AddAsync(new MemoryDraft(MemoryKind.Profile, "偏好使用简体中文回答", "", DataSensitivity.Low,
+                "example", Provenance: MemoryProvenance.Hypothetical), now.AddSeconds(2));
+            await store.AddAsync(new MemoryDraft(MemoryKind.Episodic, "曾经使用简体中文", "", DataSensitivity.Low,
+                "event", Provenance: MemoryProvenance.UserConfirmed), now.AddSeconds(3));
+
+            var suggestions = await store.FindRelatedAsync(MemoryKind.Profile, "现在希望简体中文作答", now.AddSeconds(4));
+
+            Assert.NotEmpty(suggestions);
+            Assert.All(suggestions, hit => Assert.Equal("possible_related_user_confirmed", hit.ActivationReason));
+            Assert.DoesNotContain(suggestions, hit => hit.Record.Provenance != MemoryProvenance.UserConfirmed);
+            Assert.DoesNotContain(suggestions, hit => hit.Record.Kind != MemoryKind.Profile);
+        }
+        finally
+        {
+            store.Dispose();
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task ExistingMemoryDatabaseMigratesAndMarksOldRowsAsObservedEvents()
     {
         var root = Path.Combine(Path.GetTempPath(), "PikoMemoryTests", Guid.NewGuid().ToString("N"));

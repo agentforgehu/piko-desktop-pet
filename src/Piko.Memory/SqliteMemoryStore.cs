@@ -265,6 +265,44 @@ public sealed class SqliteMemoryStore : IDisposable
             .ToArray();
     }
 
+    /// <summary>Suggests overlapping, current user-confirmed memories for explicit review; never declares a contradiction.</summary>
+    public async Task<IReadOnlyList<MemorySearchHit>> FindRelatedAsync(
+        MemoryKind kind,
+        string summary,
+        DateTimeOffset now,
+        int limit = 3,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(summary);
+        if (limit is < 1 or > 10)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        }
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind));
+        }
+
+        var queryTokens = Tokenize(summary);
+        if (queryTokens.Count == 0)
+        {
+            return Array.Empty<MemorySearchHit>();
+        }
+        var candidates = await ListAsync(now, kind, limit: 500, cancellationToken: cancellationToken,
+                maximumSensitivity: DataSensitivity.Low, includeSuperseded: false)
+            .ConfigureAwait(false);
+        return candidates
+            .Where(record => record.Provenance == MemoryProvenance.UserConfirmed)
+            .Select(record => CreateActivation(summary, queryTokens, record, now))
+            .Where(hit => hit.Score >= 0.24)
+            .OrderByDescending(hit => hit.Score)
+            .ThenByDescending(hit => hit.Record.UpdatedAt)
+            .Take(limit)
+            .Select(hit => hit with { ActivationReason = "possible_related_user_confirmed" })
+            .ToArray();
+    }
+
     public async Task<int> PurgeExpiredAsync(
         DateTimeOffset now,
         CancellationToken cancellationToken = default) =>

@@ -33,9 +33,55 @@ public partial class MemoryWindow : Window
 
         try
         {
-            await _runtime.AddMemoryAsync(kind, MemorySummaryText.Text.Trim());
+            var summary = MemorySummaryText.Text.Trim();
+            var related = await _runtime.FindRelatedMemoriesAsync(kind, summary);
+            if (!related.Available)
+            {
+                StatusText.Text = related.Reason == "memory_disabled"
+                    ? "本地记忆尚未启用。"
+                    : "本地记忆暂时不可用。";
+                return;
+            }
+
+            if (related.Items.Count > 0)
+            {
+                var closest = related.Items[0];
+                var options = string.Join("\n", related.Items.Take(3).Select(item => $"• {item.Summary}"));
+                var choice = System.Windows.MessageBox.Show(
+                    $"发现相似的用户确认记忆：\n\n{options}\n\n“是”将最相似的一条保存为新版本；“否”将这条记忆单独保存；“取消”放弃操作。系统只判断文字相似，不判断事实是否矛盾。",
+                    "检查相关记忆",
+                    MessageBoxButton.YesNoCancel,
+                    MessageBoxImage.Question,
+                    MessageBoxResult.Cancel);
+                if (choice == MessageBoxResult.Cancel)
+                {
+                    StatusText.Text = "已取消保存。";
+                    return;
+                }
+                if (choice == MessageBoxResult.Yes)
+                {
+                    var replaced = await _runtime.ReplaceMemoryAsync(
+                        closest.Id, closest.UpdatedAt, kind, summary);
+                    if (!replaced)
+                    {
+                        StatusText.Text = "相关记忆已被修改或删除，请刷新后重试。";
+                        await RefreshAsync();
+                        return;
+                    }
+                    StatusText.Text = "已保存为新版本，旧版本保留在历史中。";
+                }
+                else
+                {
+                    await _runtime.AddMemoryAsync(kind, summary);
+                    StatusText.Text = "已将相关内容作为独立记忆保存。";
+                }
+            }
+            else
+            {
+                await _runtime.AddMemoryAsync(kind, summary);
+                StatusText.Text = "已加密保存这条记忆。";
+            }
             MemorySummaryText.Clear();
-            StatusText.Text = "已加密保存这条记忆。";
             await RefreshAsync();
         }
         catch (Exception exception)

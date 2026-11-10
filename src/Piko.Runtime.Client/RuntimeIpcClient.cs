@@ -142,6 +142,28 @@ public sealed class RuntimeIpcClient
         }
     }
 
+    public async Task<RuntimeMemoryListResponse> FindRelatedMemoriesAsync(
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default)
+    {
+        if (kind is not ("Profile" or "Semantic" or "Episodic") ||
+            string.IsNullOrWhiteSpace(summary) || summary.Length > 240)
+        {
+            throw new ArgumentException("A memory kind and a short summary are required.");
+        }
+
+        var request = new RuntimeRequest(RuntimeRequest.CurrentSchemaVersion, Guid.NewGuid().ToString("N"),
+            "memory.related", JsonSerializer.SerializeToElement(new RuntimeMemoryRelatedRequest(kind, summary.Trim()), JsonOptions));
+        var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.Success || response.Type != "memory.related" || response.Payload is null)
+        {
+            throw new InvalidOperationException(response.Error ?? "memory_related_failed");
+        }
+        return response.Payload.Value.Deserialize<RuntimeMemoryListResponse>(JsonOptions)
+            ?? throw new InvalidDataException("invalid_memory_related_response");
+    }
+
     public async Task<bool> DeleteMemoryAsync(string id, CancellationToken cancellationToken = default)
     {
         if (!Guid.TryParseExact(id, "N", out var memoryId))

@@ -180,6 +180,19 @@ public sealed class RuntimeProcessManager
         await _client.AddMemoryAsync(kind, summary, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<RuntimeMemoryListResponse> FindRelatedMemoriesAsync(
+        string kind,
+        string summary,
+        CancellationToken cancellationToken = default)
+    {
+        var status = await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        if (status is null)
+        {
+            throw new InvalidOperationException("runtime_unavailable");
+        }
+        return await _client.FindRelatedMemoriesAsync(kind, summary, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<bool> DeleteMemoryAsync(
         string id,
         CancellationToken cancellationToken = default)

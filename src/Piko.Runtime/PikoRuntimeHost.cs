@@ -465,6 +465,44 @@ public sealed class PikoRuntimeHost
                 return RuntimeResponse.Ok(request.RequestId, "memory.added", new { added = true });
             }
 
+            if (request.Type == "memory.related")
+            {
+                RuntimeMemoryRelatedRequest? memoryRequest;
+                try
+                {
+                    memoryRequest = request.Payload?.Deserialize<RuntimeMemoryRelatedRequest>(IpcJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+                if (memoryRequest is null ||
+                    !Enum.TryParse<MemoryKind>(memoryRequest.Kind, ignoreCase: false, out var memoryKind) ||
+                    memoryKind is not (MemoryKind.Profile or MemoryKind.Semantic or MemoryKind.Episodic) ||
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240)
+                {
+                    return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
+                }
+                if (activeMemoryStore is null)
+                {
+                    return RuntimeResponse.Ok(request.RequestId, "memory.related", new RuntimeMemoryListResponse(
+                        false,
+                        runtimeSettings.MemoryEnabled ? "memory_unavailable" : "memory_disabled",
+                        Array.Empty<RuntimeMemoryItem>()));
+                }
+
+                var related = await activeMemoryStore.FindRelatedAsync(
+                    memoryKind, memoryRequest.Summary.Trim(), DateTimeOffset.UtcNow,
+                    cancellationToken: requestCancellation).ConfigureAwait(false);
+                return RuntimeResponse.Ok(request.RequestId, "memory.related", new RuntimeMemoryListResponse(
+                    true,
+                    "available",
+                    related.Select(hit => hit.Record).Select(memory => new RuntimeMemoryItem(
+                        memory.Id.ToString("N"), memory.Kind.ToString(), memory.CreatedAt, memory.UpdatedAt,
+                        memory.ExpiresAt, memory.Sensitivity.ToString(), memory.Summary,
+                        memory.Provenance.ToString(), memory.IsSuperseded)).ToArray()));
+            }
+
             if (request.Type == "memory.update")
             {
                 RuntimeMemoryUpdateRequest? memoryRequest;

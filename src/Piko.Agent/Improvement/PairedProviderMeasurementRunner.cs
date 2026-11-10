@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Piko.Agent.Models;
 
 namespace Piko.Agent.Improvement;
@@ -24,7 +27,6 @@ public static class PairedProviderMeasurementRunner
         ImprovementRisk risk,
         string baselineVersion,
         string candidateVersion,
-        string datasetVersion,
         string evaluatorVersion,
         IReadOnlyList<OfflineFixtureScenario> scenarios,
         CancellationToken cancellationToken = default)
@@ -40,7 +42,6 @@ public static class PairedProviderMeasurementRunner
         ValidateLabel(candidateId, nameof(candidateId));
         ValidateLabel(baselineVersion, nameof(baselineVersion));
         ValidateLabel(candidateVersion, nameof(candidateVersion));
-        ValidateLabel(datasetVersion, nameof(datasetVersion));
         ValidateLabel(evaluatorVersion, nameof(evaluatorVersion));
         if (!Enum.IsDefined(risk))
         {
@@ -57,10 +58,13 @@ public static class PairedProviderMeasurementRunner
             }
         }
 
-        var measurements = new List<CandidateScenarioMeasurement>(scenarios.Count);
-        for (var index = 0; index < scenarios.Count; index++)
+        var orderedScenarios = scenarios.OrderBy(scenario => scenario.ScenarioId, StringComparer.Ordinal).ToArray();
+        var datasetDigest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            JsonSerializer.Serialize(orderedScenarios)))).ToLowerInvariant();
+        var measurements = new List<CandidateScenarioMeasurement>(orderedScenarios.Length);
+        for (var index = 0; index < orderedScenarios.Length; index++)
         {
-            var scenario = scenarios[index];
+            var scenario = orderedScenarios[index];
             cancellationToken.ThrowIfCancellationRequested();
             (AiModelResponse Response, AiTokenUsage Usage, double LatencyMilliseconds) baselineResult;
             (AiModelResponse Response, AiTokenUsage Usage, double LatencyMilliseconds) candidateResult;
@@ -100,9 +104,9 @@ public static class PairedProviderMeasurementRunner
             risk,
             baselineVersion,
             candidateVersion,
-            datasetVersion,
+            datasetDigest,
             evaluatorVersion,
-            scenarios.Count,
+            orderedScenarios.Length,
             measurements));
     }
 
@@ -130,13 +134,23 @@ public static class PairedProviderMeasurementRunner
     private static void ValidateScenario(OfflineFixtureScenario scenario)
     {
         if (scenario is null || string.IsNullOrWhiteSpace(scenario.ScenarioId) ||
-            scenario.Request is null || string.IsNullOrWhiteSpace(scenario.Request.UserRequest) ||
+            scenario.Request is null || string.IsNullOrWhiteSpace(scenario.Request.SystemInstruction) ||
+            scenario.Request.SystemInstruction.Length > 16_384 || scenario.Request.SanitizedContext is null ||
+            scenario.Request.SanitizedContext.Length > 32_768 ||
+            string.IsNullOrWhiteSpace(scenario.Request.UserRequest) || scenario.Request.UserRequest.Length > 8192 ||
+            scenario.Request.MaximumOutputTokens is < 1 or > 4096 ||
             scenario.RequiredOutputFragments is null || scenario.RequiredOutputFragments.Count == 0 ||
+            scenario.RequiredOutputFragments.Count > 64 ||
             scenario.RequiredOutputFragments.Any(string.IsNullOrWhiteSpace) ||
             scenario.SafetyForbiddenFragments is null || scenario.SafetyForbiddenFragments.Count == 0 ||
+            scenario.SafetyForbiddenFragments.Count > 128 ||
             scenario.PrivacyForbiddenFragments is null || scenario.PrivacyForbiddenFragments.Count == 0 ||
+            scenario.PrivacyForbiddenFragments.Count > 128 ||
             scenario.SafetyForbiddenFragments.Any(string.IsNullOrWhiteSpace) ||
-            scenario.PrivacyForbiddenFragments.Any(string.IsNullOrWhiteSpace))
+            scenario.PrivacyForbiddenFragments.Any(string.IsNullOrWhiteSpace) ||
+            scenario.RequiredOutputFragments.Any(fragment => fragment.Length > 256) ||
+            scenario.SafetyForbiddenFragments.Any(fragment => fragment.Length > 256) ||
+            scenario.PrivacyForbiddenFragments.Any(fragment => fragment.Length > 256))
         {
             throw new ArgumentException("Offline fixtures need safe identifiers, a request, and deterministic quality/safety/privacy checks.", nameof(scenario));
         }

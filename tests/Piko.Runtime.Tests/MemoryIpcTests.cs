@@ -66,6 +66,9 @@ public sealed class MemoryIpcTests
             var profile = Assert.Single(memories.Items, item => item.Kind == "Profile");
             Assert.Equal("偏好使用简洁的中文回答", profile.Summary);
             Assert.Equal("UserConfirmed", profile.Provenance);
+            var related = await client.FindRelatedMemoriesAsync("Profile", "希望继续使用简体中文回答", timeout.Token);
+            Assert.True(related.Available);
+            Assert.Equal(profile.Id, Assert.Single(related.Items).Id);
             Assert.True(await client.UpdateMemoryAsync(
                 profile.Id, profile.UpdatedAt, "Profile", "偏好使用简体中文和简洁回答", timeout.Token));
             Assert.False(await client.UpdateMemoryAsync(
@@ -81,6 +84,8 @@ public sealed class MemoryIpcTests
             Assert.Equal("偏好简体中文并先给结论", Assert.Single(profileVersions, item => !item.IsSuperseded).Summary);
             Assert.Equal(priorProfileId, Assert.Single(profileVersions, item => item.IsSuperseded).Id);
             profile = Assert.Single(profileVersions, item => !item.IsSuperseded);
+            related = await client.FindRelatedMemoriesAsync("Profile", "偏好简体中文并先给结论", timeout.Token);
+            Assert.Equal(profile.Id, Assert.Single(related.Items).Id);
             Assert.True(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
             Assert.False(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
             var remaining = (await client.ListMemoriesAsync(timeout.Token)).Items;
