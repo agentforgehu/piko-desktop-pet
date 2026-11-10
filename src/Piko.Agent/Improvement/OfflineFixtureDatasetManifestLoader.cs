@@ -32,7 +32,7 @@ public static class OfflineFixtureDatasetManifestLoader
             throw new InvalidDataException($"Fixture manifest must be between 1 and {MaximumManifestBytes} bytes.");
         }
 
-        using var document = JsonDocument.Parse(json);
+        using var document = JsonDocument.Parse(json.ToArray());
         EnsureNoDuplicateProperties(document.RootElement);
         var manifest = JsonSerializer.Deserialize<OfflineFixtureDatasetManifest>(json, InputOptions)
             ?? throw new InvalidDataException("Fixture manifest is empty or invalid.");
