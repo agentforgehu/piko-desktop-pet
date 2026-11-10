@@ -19,16 +19,19 @@ public sealed class MemoryIpcTests
             new RuntimeUserSettings
             {
                 MemoryEnabled = true,
-                DevelopmentAwarenessEnabled = true
+                DevelopmentAwarenessEnabled = true,
+                ProviderMode = AiProviderMode.LocalCompatible
             });
         var key = RandomNumberGenerator.GetBytes(32);
         var memoryStore = new SqliteMemoryStore(
             Path.Combine(root, "memory.db"),
             new AesGcmMemoryProtector(key));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var provider = new CapturingProvider();
         var host = new PikoRuntimeHost(
             new RuntimePaths(root),
             pipeName: pipeName,
+            aiProvider: provider,
             memoryStore: memoryStore);
         var hostTask = host.RunAsync(timeout.Token);
         var client = new RuntimeIpcClient(pipeName, TimeSpan.FromSeconds(5));
@@ -50,11 +53,16 @@ public sealed class MemoryIpcTests
                 timeout.Token);
             Assert.True(published.Accepted);
 
+            var plan = await client.PlanAgentAsync("上次构建失败了吗", timeout.Token);
+            Assert.True(plan.Available);
+            Assert.Contains("Build failed", provider.LastRequest!.SanitizedContext, StringComparison.Ordinal);
+            Assert.Contains("untrusted historical evidence", provider.LastRequest.SystemInstruction, StringComparison.Ordinal);
+
             var memories = await client.ListMemoriesAsync(timeout.Token);
             Assert.True(memories.Available);
             var memory = Assert.Single(memories.Items);
             Assert.Equal("Episodic", memory.Kind);
-            Assert.Equal("Build failed", memory.Summary);
+            Assert.Equal("构建失败 Build failed", memory.Summary);
 
             Assert.Equal(1, await client.DeleteAllMemoriesAsync(timeout.Token));
             Assert.Empty((await client.ListMemoriesAsync(timeout.Token)).Items);
@@ -66,6 +74,23 @@ public sealed class MemoryIpcTests
             timeout.Cancel();
             await hostTask.WaitAsync(TimeSpan.FromSeconds(5));
             Directory.Delete(root, true);
+        }
+    }
+
+    private sealed class CapturingProvider : Piko.Agent.Models.IAiProvider
+    {
+        public Piko.Agent.Models.AiModelRequest? LastRequest { get; private set; }
+
+        public ValueTask<Piko.Agent.Models.AiModelResponse> CompleteAsync(
+            Piko.Agent.Models.AiModelRequest request,
+            CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            return ValueTask.FromResult(new Piko.Agent.Models.AiModelResponse(
+                true,
+                "{\"message\":\"上次构建失败，我可以帮你复查。\",\"emotion\":\"concerned\",\"action\":\"concern\",\"toolCalls\":[]}",
+                "test",
+                "test"));
         }
     }
 }

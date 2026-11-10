@@ -21,6 +21,45 @@ public sealed class PetControllerTests
         Assert.True(reaction.Emotion.Arousal > PetEmotionState.Baseline.Arousal);
     }
 
+    [Fact]
+    public void PetMind_AppraisalRecordsCauseAndBoundsEveryStateDimension()
+    {
+        var mind = new PetMind();
+
+        var emotion = mind.Appraise(new PetAppraisalEvent(
+            "uncertain_task_failure",
+            GoalRelevance: 3,
+            OutcomeValence: -2,
+            ArousalDelta: 2,
+            Certainty: 0,
+            Controllability: 0,
+            EnergyDelta: -2,
+            RelationshipDelta: 1));
+
+        Assert.Equal("uncertain_task_failure", mind.LastTransition!.Appraisal.Trigger);
+        Assert.Equal(PetEmotionState.Baseline, mind.LastTransition.Before);
+        Assert.Equal(emotion, mind.LastTransition.After);
+        Assert.InRange(emotion.Valence, -1, 1);
+        Assert.InRange(emotion.Arousal, 0, 1);
+        Assert.InRange(emotion.Energy, 0, 1);
+        Assert.InRange(emotion.Attachment, 0, 1);
+        Assert.True(emotion.Arousal > PetEmotionState.Baseline.Arousal);
+    }
+
+    [Fact]
+    public void PetMind_RepeatedModelExpressionsDoNotArtificiallyIncreaseRelationshipState()
+    {
+        var mind = new PetMind();
+        var initialRelationship = mind.Emotion.Attachment;
+
+        for (var index = 0; index < 100; index++)
+        {
+            mind.ReactToModel("很好", "happy", "greet");
+        }
+
+        Assert.Equal(initialRelationship, mind.Emotion.Attachment);
+    }
+
     private readonly DesktopWorldCompiler _compiler = new();
 
     [Fact]

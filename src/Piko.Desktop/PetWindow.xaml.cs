@@ -894,7 +894,8 @@ public partial class PetWindow : Window
         _pendingReaction = _mind.React(stimulus.Value, status.InterventionShouldSpeak);
         _logger.Info(
             $"PetMind accepted {status.InterventionSemanticAction} " +
-            $"(emotion={_mind.Emotion.Valence:F2}/{_mind.Emotion.Arousal:F2}, " +
+            $"(cause={_mind.LastTransition?.Appraisal.Trigger ?? "unknown"}, " +
+            $"emotion={_mind.Emotion.Valence:F2}/{_mind.Emotion.Arousal:F2}, " +
             $"speak={_pendingReaction.ShouldSpeak})");
         if (status.InterventionShouldSpeak && status.LastIntervention != InterventionKind.RespondToUser)
         {

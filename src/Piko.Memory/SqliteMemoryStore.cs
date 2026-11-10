@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using Microsoft.Data.Sqlite;
 using Piko.Context.Events;
 using Piko.Memory.Security;
@@ -117,7 +118,8 @@ public sealed class SqliteMemoryStore : IDisposable
         DateTimeOffset now,
         MemoryKind? kind = null,
         int limit = 100,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DataSensitivity? maximumSensitivity = null)
     {
         ThrowIfDisposed();
         if (limit is < 1 or > 500)
@@ -133,11 +135,15 @@ public sealed class SqliteMemoryStore : IDisposable
             FROM memories
             WHERE (expires_at IS NULL OR expires_at > $now)
               AND ($kind IS NULL OR kind = $kind)
+              AND ($maximumSensitivity IS NULL OR sensitivity <= $maximumSensitivity)
             ORDER BY updated_at DESC
             LIMIT $limit;
             """;
         command.Parameters.AddWithValue("$now", now.ToString("O", CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("$kind", kind is null ? DBNull.Value : (int)kind.Value);
+        command.Parameters.AddWithValue("$maximumSensitivity", maximumSensitivity is null
+            ? DBNull.Value
+            : (int)maximumSensitivity.Value);
         command.Parameters.AddWithValue("$limit", limit);
         var records = new List<MemoryRecord>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -147,6 +153,42 @@ public sealed class SqliteMemoryStore : IDisposable
         }
 
         return records;
+    }
+
+    public async Task<IReadOnlyList<MemorySearchHit>> SearchAsync(
+        string query,
+        DateTimeOffset now,
+        int limit = 5,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(query);
+        if (limit is < 1 or > 20)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        }
+
+        var queryTokens = Tokenize(query);
+        if (queryTokens.Count == 0)
+        {
+            return Array.Empty<MemorySearchHit>();
+        }
+
+        // The store is intentionally small and local. Rank only a bounded recent candidate set,
+        // and never expose medium/high sensitivity records to the model by default.
+        var candidates = await ListAsync(
+                now,
+                limit: 500,
+                cancellationToken: cancellationToken,
+                maximumSensitivity: DataSensitivity.Low)
+            .ConfigureAwait(false);
+        return candidates
+            .Select(record => new MemorySearchHit(record, Score(query, queryTokens, record.Summary)))
+            .Where(hit => hit.Score >= 0.16)
+            .OrderByDescending(hit => hit.Score)
+            .ThenByDescending(hit => hit.Record.UpdatedAt)
+            .Take(limit)
+            .ToArray();
     }
 
     public async Task<int> PurgeExpiredAsync(
@@ -275,6 +317,87 @@ public sealed class SqliteMemoryStore : IDisposable
         MemoryKind.Working => now.AddDays(1),
         MemoryKind.Episodic => now.AddDays(30),
         _ => null
+    };
+
+    private static double Score(string query, HashSet<string> queryTokens, string summary)
+    {
+        var candidateTokens = Tokenize(summary);
+        if (candidateTokens.Count == 0)
+        {
+            return 0;
+        }
+
+        var overlap = queryTokens.Count(candidateTokens.Contains);
+        var lexicalScore = overlap / Math.Sqrt(queryTokens.Count * candidateTokens.Count);
+        var phraseBoost = query.Contains(summary, StringComparison.OrdinalIgnoreCase) ||
+                          summary.Contains(query, StringComparison.OrdinalIgnoreCase)
+            ? 0.25
+            : 0;
+        return Math.Min(1, lexicalScore + phraseBoost);
+    }
+
+    private static HashSet<string> Tokenize(string text)
+    {
+        var tokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var latin = new StringBuilder();
+        var cjkRunes = new List<string>();
+
+        void FlushLatin()
+        {
+            if (latin.Length > 0)
+            {
+                tokens.Add(Canonicalize(latin.ToString()));
+                latin.Clear();
+            }
+        }
+
+        void FlushCjk()
+        {
+            if (cjkRunes.Count == 1)
+            {
+                tokens.Add(cjkRunes[0]);
+            }
+            else
+            {
+                for (var index = 0; index + 1 < cjkRunes.Count; index++)
+                {
+                    tokens.Add(Canonicalize(cjkRunes[index] + cjkRunes[index + 1]));
+                }
+            }
+            cjkRunes.Clear();
+        }
+
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (Rune.GetUnicodeCategory(rune) == System.Globalization.UnicodeCategory.OtherLetter)
+            {
+                FlushLatin();
+                cjkRunes.Add(rune.ToString());
+            }
+            else if (Rune.IsLetterOrDigit(rune))
+            {
+                FlushCjk();
+                latin.Append(rune.ToString().ToLowerInvariant());
+            }
+            else
+            {
+                FlushLatin();
+                FlushCjk();
+            }
+        }
+
+        FlushLatin();
+        FlushCjk();
+        return tokens;
+    }
+
+    private static string Canonicalize(string token) => token.ToLowerInvariant() switch
+    {
+        "构建" or "编译" or "build" => "build",
+        "失败" or "错误" or "failed" or "failure" or "error" => "failed",
+        "成功" or "success" => "success",
+        "测试" or "test" or "tests" => "test",
+        _ => token.ToLowerInvariant()
     };
 
     private static void ValidateDraft(MemoryDraft draft)

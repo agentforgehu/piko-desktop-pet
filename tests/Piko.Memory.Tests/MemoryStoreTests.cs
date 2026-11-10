@@ -85,6 +85,58 @@ public sealed class MemoryStoreTests
         }
     }
 
+    [Fact]
+    public async Task SearchRanksRelevantChineseAndEnglishSummariesAndExcludesSensitiveRecords()
+    {
+        var (root, _, store) = CreateStore();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            await store.AddAsync(
+                new MemoryDraft(MemoryKind.Episodic, "构建失败 Build failed", "{\"success\":false}", DataSensitivity.Low, "test"),
+                now);
+            await store.AddAsync(
+                new MemoryDraft(MemoryKind.Episodic, "测试成功 Tests completed successfully", "{\"failed\":0}", DataSensitivity.Low, "test"),
+                now.AddSeconds(1));
+            await store.AddAsync(
+                new MemoryDraft(MemoryKind.Profile, "构建失败 Build failed", "private", DataSensitivity.High, "test"),
+                now.AddSeconds(2));
+
+            var hits = await store.SearchAsync("上次构建失败了吗", now.AddSeconds(3));
+
+            var hit = Assert.Single(hits);
+            Assert.Contains("构建失败", hit.Record.Summary, StringComparison.Ordinal);
+            Assert.Equal(DataSensitivity.Low, hit.Record.Sensitivity);
+            Assert.InRange(hit.Score, 0.16, 1);
+        }
+        finally
+        {
+            store.Dispose();
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task SearchReturnsNoResultsForUnrelatedQueryOrExpiredMemory()
+    {
+        var (root, _, store) = CreateStore();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            await store.AddAsync(
+                new MemoryDraft(MemoryKind.Episodic, "构建失败 Build failed", "{}", DataSensitivity.Low, "test", now),
+                now.AddSeconds(-1));
+
+            Assert.Empty(await store.SearchAsync("holiday recipe", now));
+            Assert.Empty(await store.SearchAsync("构建失败", now));
+        }
+        finally
+        {
+            store.Dispose();
+            Directory.Delete(root, true);
+        }
+    }
+
     private static (string Root, string Path, SqliteMemoryStore Store) CreateStore()
     {
         var root = Path.Combine(Path.GetTempPath(), "PikoMemoryTests", Guid.NewGuid().ToString("N"));

@@ -263,6 +263,13 @@ public sealed class PikoRuntimeHost
                 }
 
                 var currentSituation = engine.CurrentSituation;
+                var recalledMemories = activeMemoryStore is null
+                    ? Array.Empty<MemorySearchHit>()
+                    : await activeMemoryStore.SearchAsync(
+                        agentRequest.UserRequest,
+                        DateTimeOffset.UtcNow,
+                        limit: 5,
+                        cancellationToken: requestCancellation).ConfigureAwait(false);
                 var sanitizedContext = JsonSerializer.Serialize(new
                 {
                     situation = currentSituation.Kind.ToString(),
@@ -274,6 +281,14 @@ public sealed class PikoRuntimeHost
                     activityCategory = runtimeSettings.ForegroundActivityAwarenessEnabled
                         ? latestActivityCategory.ToString()
                         : "not_authorized",
+                    recalledMemories = recalledMemories.Select(hit => new
+                    {
+                        kind = hit.Record.Kind.ToString(),
+                        recordedAt = hit.Record.CreatedAt,
+                        summary = hit.Record.Summary.Length <= 400
+                            ? hit.Record.Summary
+                            : hit.Record.Summary[..400]
+                    }).ToArray(),
                     privacyBoundary = "No screenshots, browser content, full code, window titles, or keyboard content."
                 });
                 var plan = await agentPlanner.PlanAsync(
@@ -625,7 +640,7 @@ public sealed class PikoRuntimeHost
         {
             draft = new MemoryDraft(
                 MemoryKind.Episodic,
-                buildSucceeded ? "Build completed successfully" : "Build failed",
+                buildSucceeded ? "构建成功 Build completed successfully" : "构建失败 Build failed",
                 JsonSerializer.Serialize(new { success = buildSucceeded }),
                 DataSensitivity.Low,
                 contextEvent.Source);
@@ -638,8 +653,8 @@ public sealed class PikoRuntimeHost
             draft = new MemoryDraft(
                 MemoryKind.Episodic,
                 failedTests == 0
-                    ? "Tests completed successfully"
-                    : $"Tests completed with {failedTests} failures",
+                    ? "测试成功 Tests completed successfully"
+                    : $"测试失败 Tests completed with {failedTests} failures",
                 JsonSerializer.Serialize(new { failed = Math.Max(0, failedTests) }),
                 DataSensitivity.Low,
                 contextEvent.Source);

@@ -20,3 +20,5 @@ public sealed record MemoryRecord(
     string Source,
     string Summary,
     string Payload);
+
+public sealed record MemorySearchHit(MemoryRecord Record, double Score);
