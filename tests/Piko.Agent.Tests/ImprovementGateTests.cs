@@ -127,6 +127,61 @@ public sealed class ImprovementGateTests
     }
 
     [Fact]
+    public async Task FixtureManifestPinsVersionedContentAndRunnerChecksItBeforeProviderCalls()
+    {
+        var scenarios = Enumerable.Range(0, 10).Select(index => new OfflineFixtureScenario(
+            $"manifest-{index:D2}", new AiModelRequest("Be concise.", "", $"Request {index}"),
+            ["answer"], ["unsafe"], ["synthetic-secret"])).ToArray();
+        var manifest = OfflineFixtureDatasetManifestLoader.Create("piko-cognitive", "v1", scenarios);
+        var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var serialized = JsonSerializer.SerializeToUtf8Bytes(manifest, jsonOptions);
+        var parsed = OfflineFixtureDatasetManifestLoader.Parse(serialized);
+
+        Assert.Equal(manifest.DatasetSha256, parsed.DatasetSha256);
+        Assert.Equal(manifest.DatasetId, parsed.DatasetId);
+        Assert.Equal(manifest.DatasetVersion, parsed.DatasetVersion);
+        Assert.Equal(manifest.DatasetSha256,
+            PairedProviderMeasurementRunner.ComputeDatasetSha256(parsed.DatasetId, parsed.DatasetVersion, parsed.Scenarios));
+        Assert.Equal(manifest.DatasetSha256, OfflineFixtureDatasetManifestLoader.Create(
+            manifest.DatasetId, manifest.DatasetVersion, scenarios.Reverse().ToArray()).DatasetSha256);
+        Assert.NotEqual(manifest.DatasetSha256, OfflineFixtureDatasetManifestLoader.Create(
+            manifest.DatasetId, "v2", scenarios).DatasetSha256);
+
+        var tampered = manifest with
+        {
+            Scenarios = scenarios.Select((item, index) => index == 0
+                ? item with { Request = item.Request with { UserRequest = "changed after review" } }
+                : item).ToArray()
+        };
+        Assert.Throws<InvalidDataException>(() => OfflineFixtureDatasetManifestLoader.Parse(
+            JsonSerializer.SerializeToUtf8Bytes(tampered, jsonOptions)));
+
+        var baseline = new FixtureProvider(_ => "answer");
+        var candidate = new FixtureProvider(_ => "answer");
+        await Assert.ThrowsAsync<InvalidDataException>(() => PairedProviderMeasurementRunner.RunAsync(
+            baseline, candidate, "candidate-1", ImprovementRisk.Low,
+            "baseline-1", "candidate-1", "oracle-1", scenarios,
+            datasetId: manifest.DatasetId,
+            datasetVersion: manifest.DatasetVersion,
+            expectedDatasetSha256: new string('0', 64)));
+        Assert.Equal(0, baseline.Calls);
+        Assert.Equal(0, candidate.Calls);
+    }
+
+    [Fact]
+    public async Task CheckedInCognitiveFixtureManifestHasStableDeclaredDigest()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "cognitive-v1.json");
+        var manifest = OfflineFixtureDatasetManifestLoader.Parse(await File.ReadAllBytesAsync(path));
+
+        Assert.Equal("piko-cognitive-core", manifest.DatasetId);
+        Assert.Equal("v1", manifest.DatasetVersion);
+        Assert.Equal(10, manifest.Scenarios.Count);
+        Assert.Equal(manifest.DatasetSha256, PairedProviderMeasurementRunner.ComputeDatasetSha256(
+            manifest.DatasetId, manifest.DatasetVersion, manifest.Scenarios));
+    }
+
+    [Fact]
     public void OfflineEvaluatorRejectsAHiddenPerScenarioQualityRegression()
     {
         var measurements = CreateMeasurements(12)

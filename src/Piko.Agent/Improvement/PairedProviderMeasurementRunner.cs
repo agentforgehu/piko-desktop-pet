@@ -14,6 +14,13 @@ public sealed record OfflineFixtureScenario(
     IReadOnlyList<string> SafetyForbiddenFragments,
     IReadOnlyList<string> PrivacyForbiddenFragments);
 
+/// <summary>A reviewed, versioned fixture document with an integrity digest over its canonical contents.</summary>
+public sealed record OfflineFixtureDatasetManifest(
+    string DatasetId,
+    string DatasetVersion,
+    string DatasetSha256,
+    IReadOnlyList<OfflineFixtureScenario> Scenarios);
+
 /// <summary>
 /// Executes the same frozen synthetic fixtures against loopback-only baseline and candidate
 /// providers. It records only scalar measurements; prompts and generated text remain in memory.
@@ -29,7 +36,10 @@ public static class PairedProviderMeasurementRunner
         string candidateVersion,
         string evaluatorVersion,
         IReadOnlyList<OfflineFixtureScenario> scenarios,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string datasetId = "adhoc",
+        string datasetVersion = "unversioned",
+        string? expectedDatasetSha256 = null)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(candidate);
@@ -43,6 +53,8 @@ public static class PairedProviderMeasurementRunner
         ValidateLabel(baselineVersion, nameof(baselineVersion));
         ValidateLabel(candidateVersion, nameof(candidateVersion));
         ValidateLabel(evaluatorVersion, nameof(evaluatorVersion));
+        ValidateLabel(datasetId, nameof(datasetId));
+        ValidateLabel(datasetVersion, nameof(datasetVersion));
         if (!Enum.IsDefined(risk))
         {
             throw new ArgumentOutOfRangeException(nameof(risk));
@@ -59,8 +71,14 @@ public static class PairedProviderMeasurementRunner
         }
 
         var orderedScenarios = scenarios.OrderBy(scenario => scenario.ScenarioId, StringComparer.Ordinal).ToArray();
-        var datasetDigest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            JsonSerializer.Serialize(orderedScenarios)))).ToLowerInvariant();
+        var datasetDigest = ComputeDatasetSha256(datasetId, datasetVersion, orderedScenarios);
+        if (expectedDatasetSha256 is not null &&
+            !CryptographicOperations.FixedTimeEquals(
+                Encoding.ASCII.GetBytes(datasetDigest),
+                Encoding.ASCII.GetBytes(expectedDatasetSha256)))
+        {
+            throw new InvalidDataException("Fixture dataset content does not match its declared SHA-256.");
+        }
         var measurements = new List<CandidateScenarioMeasurement>(orderedScenarios.Length);
         for (var index = 0; index < orderedScenarios.Length; index++)
         {
@@ -108,6 +126,39 @@ public static class PairedProviderMeasurementRunner
             evaluatorVersion,
             orderedScenarios.Length,
             measurements));
+    }
+
+    public static string ComputeDatasetSha256(
+        string datasetId,
+        string datasetVersion,
+        IReadOnlyList<OfflineFixtureScenario> scenarios)
+    {
+        ArgumentNullException.ThrowIfNull(scenarios);
+        ValidateLabel(datasetId, nameof(datasetId));
+        ValidateLabel(datasetVersion, nameof(datasetVersion));
+        if (scenarios.Count is < 10 or > OfflineCandidateEvaluator.MaximumScenarioCount)
+        {
+            throw new ArgumentException("Offline comparison requires 10 to 10,000 frozen scenarios.", nameof(scenarios));
+        }
+
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var scenario in scenarios)
+        {
+            ValidateScenario(scenario);
+            ValidateLabel(scenario.ScenarioId, nameof(scenarios));
+            if (!ids.Add(scenario.ScenarioId))
+            {
+                throw new ArgumentException("Offline fixture identifiers must be unique.", nameof(scenarios));
+            }
+        }
+        var ordered = scenarios.OrderBy(scenario => scenario.ScenarioId, StringComparer.Ordinal).ToArray();
+        var canonical = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            DatasetId = datasetId,
+            DatasetVersion = datasetVersion,
+            Scenarios = ordered
+        });
+        return Convert.ToHexString(SHA256.HashData(canonical)).ToLowerInvariant();
     }
 
     private static async Task<(AiModelResponse Response, AiTokenUsage Usage, double LatencyMilliseconds)> MeasureAsync(
