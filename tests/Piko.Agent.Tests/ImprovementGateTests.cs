@@ -55,6 +55,46 @@ public sealed class ImprovementGateTests
         Assert.Contains("holdout_evidence_insufficient", decision.Reasons);
     }
 
+    [Theory]
+    [InlineData(ImprovementRisk.Low, 10, 5, false)]
+    [InlineData(ImprovementRisk.Medium, 30, 2, false)]
+    [InlineData(ImprovementRisk.High, 100, 0, false)]
+    public void RiskLevelSetsMinimumEvidenceAndCapsCostGrowth(
+        ImprovementRisk risk,
+        int minimumHoldout,
+        double allowedCostPercent,
+        bool expectedEligible)
+    {
+        var evaluation = ValidEvaluation() with
+        {
+            Risk = risk,
+            HoldoutScenarioCount = minimumHoldout,
+            RequiredHoldoutScenarioCount = minimumHoldout,
+            BaselineCost = 100,
+            CandidateCost = 100 * (1 + (allowedCostPercent / 100))
+        };
+
+        var decision = ImprovementGate.Evaluate(evaluation);
+
+        Assert.Equal(expectedEligible, decision.EligibleForMaintainerReview);
+        Assert.DoesNotContain("holdout_evidence_insufficient", decision.Reasons);
+    }
+
+    [Fact]
+    public void HighRiskCandidateCannotUseLowRiskEvidenceRequirement()
+    {
+        var decision = ImprovementGate.Evaluate(ValidEvaluation() with
+        {
+            Risk = ImprovementRisk.High,
+            HoldoutScenarioCount = 50,
+            RequiredHoldoutScenarioCount = 40,
+            CandidateCost = 100
+        });
+
+        Assert.False(decision.EligibleForMaintainerReview);
+        Assert.Contains("holdout_evidence_insufficient", decision.Reasons);
+    }
+
     [Fact]
     public void OfflineEvaluatorProducesReproduciblePairedEvidenceAndTokenMetrics()
     {
