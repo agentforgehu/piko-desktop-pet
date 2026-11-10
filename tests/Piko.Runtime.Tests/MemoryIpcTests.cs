@@ -59,7 +59,8 @@ public sealed class MemoryIpcTests
             Assert.Contains("untrusted historical evidence", provider.LastRequest.SystemInstruction, StringComparison.Ordinal);
 
             var profileValidUntil = DateTimeOffset.UtcNow.AddDays(60);
-            await client.AddMemoryAsync("Profile", "偏好使用简洁的中文回答", timeout.Token, profileValidUntil);
+            await client.AddMemoryAsync("Profile", "偏好使用简洁的中文回答", timeout.Token, profileValidUntil,
+                factKey: "response_language", factValue: "Chinese");
 
             var memories = await client.ListMemoriesAsync(timeout.Token);
             Assert.True(memories.Available);
@@ -69,11 +70,19 @@ public sealed class MemoryIpcTests
             Assert.Equal("UserConfirmed", profile.Provenance);
             Assert.NotNull(profile.ValidFrom);
             Assert.Equal(profileValidUntil, profile.ValidUntil);
+            Assert.Equal("response_language", profile.FactKey);
+            Assert.Equal("Chinese", profile.FactValue);
+            var possibleConflict = await client.FindRelatedMemoriesAsync("Profile", "use concise answers", timeout.Token,
+                factKey: "response_language", factValue: "English");
+            Assert.Equal("same_fact_different_value", Assert.Single(possibleConflict.Items,
+                item => item.FactValue == "Chinese").Relation);
+            Assert.Contains(possibleConflict.Items, item => item.Relation == "same_fact_same_value");
             var related = await client.FindRelatedMemoriesAsync("Profile", "希望继续使用简体中文回答", timeout.Token);
             Assert.True(related.Available);
             Assert.Equal(profile.Id, Assert.Single(related.Items).Id);
             Assert.True(await client.UpdateMemoryAsync(
-                profile.Id, profile.UpdatedAt, "Profile", "偏好使用简体中文和简洁回答", timeout.Token, profileValidUntil));
+                profile.Id, profile.UpdatedAt, "Profile", "偏好使用简体中文和简洁回答", timeout.Token, profileValidUntil,
+                factKey: "response_language", factValue: "Chinese"));
             Assert.False(await client.UpdateMemoryAsync(
                 profile.Id, profile.UpdatedAt, "Profile", "过时编辑不应覆盖新值", timeout.Token));
             profile = Assert.Single((await client.ListMemoriesAsync(timeout.Token)).Items, item => item.Kind == "Profile");
@@ -81,17 +90,21 @@ public sealed class MemoryIpcTests
             var priorProfileId = profile.Id;
             var replacementValidUntil = DateTimeOffset.UtcNow.AddDays(90);
             Assert.True(await client.ReplaceMemoryAsync(
-                profile.Id, profile.UpdatedAt, "Profile", "偏好简体中文并先给结论", timeout.Token, replacementValidUntil));
+                profile.Id, profile.UpdatedAt, "Profile", "偏好英文并先给结论", timeout.Token, replacementValidUntil,
+                factKey: "response_language", factValue: "English"));
             var profileVersions = (await client.ListMemoriesAsync(timeout.Token)).Items
                 .Where(item => item.Kind == "Profile").ToArray();
             Assert.Equal(2, profileVersions.Length);
-            Assert.Equal("偏好简体中文并先给结论", Assert.Single(profileVersions, item => !item.IsSuperseded).Summary);
+            Assert.Equal("偏好英文并先给结论", Assert.Single(profileVersions, item => !item.IsSuperseded).Summary);
             Assert.Equal(priorProfileId, Assert.Single(profileVersions, item => item.IsSuperseded).Id);
             Assert.Equal(replacementValidUntil, Assert.Single(profileVersions, item => !item.IsSuperseded).ValidUntil);
+            Assert.Equal("English", Assert.Single(profileVersions, item => !item.IsSuperseded).FactValue);
             Assert.True(Assert.Single(profileVersions, item => item.IsSuperseded).ValidUntil <= DateTimeOffset.UtcNow);
             profile = Assert.Single(profileVersions, item => !item.IsSuperseded);
-            related = await client.FindRelatedMemoriesAsync("Profile", "偏好简体中文并先给结论", timeout.Token);
+            related = await client.FindRelatedMemoriesAsync("Profile", "short answers", timeout.Token,
+                factKey: "response_language", factValue: "English");
             Assert.Equal(profile.Id, Assert.Single(related.Items).Id);
+            Assert.Equal("same_fact_same_value", related.Items[0].Relation);
             Assert.True(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
             Assert.False(await client.DeleteMemoryAsync(profile.Id, timeout.Token));
             var remaining = (await client.ListMemoriesAsync(timeout.Token)).Items;

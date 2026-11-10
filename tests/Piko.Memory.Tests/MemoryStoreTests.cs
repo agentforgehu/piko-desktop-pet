@@ -31,7 +31,10 @@ public sealed class MemoryStoreTests
                     "User fixed the build",
                     "No source code, only a result summary",
                     DataSensitivity.Medium,
-                    "test"),
+                    "test",
+                    Provenance: MemoryProvenance.UserConfirmed,
+                    FactKey: "response_language",
+                    FactValue: "Chinese"),
                 now);
 
             var loaded = await store.GetAsync(added.Id, now);
@@ -40,6 +43,8 @@ public sealed class MemoryStoreTests
             var databaseText = System.Text.Encoding.UTF8.GetString(databaseBytes);
             Assert.DoesNotContain("User fixed the build", databaseText, StringComparison.Ordinal);
             Assert.DoesNotContain("No source code", databaseText, StringComparison.Ordinal);
+            Assert.DoesNotContain("response_language", databaseText, StringComparison.Ordinal);
+            Assert.DoesNotContain("Chinese", databaseText, StringComparison.Ordinal);
         }
         finally
         {
@@ -236,6 +241,45 @@ public sealed class MemoryStoreTests
     }
 
     [Fact]
+    public async Task ExplicitFactSlotsFindPossibleConflictsEvenWithoutLexicalOverlap()
+    {
+        var (root, _, store) = CreateStore();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            await Assert.ThrowsAsync<ArgumentException>(() => store.AddAsync(new MemoryDraft(
+                MemoryKind.Profile, "unpaired fact metadata", "", DataSensitivity.Low, "user.confirmed",
+                Provenance: MemoryProvenance.UserConfirmed, FactKey: "topic"), now));
+            var chinese = await store.AddAsync(new MemoryDraft(MemoryKind.Profile,
+                "希望回答简洁一些", "", DataSensitivity.Low, "user.confirmed",
+                Provenance: MemoryProvenance.UserConfirmed,
+                FactKey: "response_language", FactValue: "Chinese"), now);
+            var english = await store.AddAsync(new MemoryDraft(MemoryKind.Profile,
+                "Please keep answers concise", "", DataSensitivity.Low, "user.confirmed",
+                Provenance: MemoryProvenance.UserConfirmed,
+                FactKey: "response_language", FactValue: "English"), now.AddSeconds(1));
+            await store.AddAsync(new MemoryDraft(MemoryKind.Profile,
+                "Prefer a dark appearance", "", DataSensitivity.Low, "user.confirmed",
+                Provenance: MemoryProvenance.UserConfirmed,
+                FactKey: "theme", FactValue: "dark"), now.AddSeconds(2));
+
+            var related = await store.FindRelatedAsync(MemoryKind.Profile, "简洁作答", now.AddSeconds(3),
+                factKey: "response_language", factValue: "English");
+
+            Assert.Equal(2, related.Count);
+            Assert.Equal("same_fact_same_value", Assert.Single(related, hit => hit.Record.Id == english.Id).ActivationReason);
+            Assert.Equal("same_fact_different_value", Assert.Single(related, hit => hit.Record.Id == chinese.Id).ActivationReason);
+            Assert.DoesNotContain(related, hit => hit.Record.FactKey == "theme");
+            Assert.DoesNotContain(related, hit => hit.ActivationReason.Contains("contradiction", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            store.Dispose();
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task ValidityWindowsControlRecallButRemainVisibleForUserReview()
     {
         var (root, _, store) = CreateStore();
@@ -320,6 +364,8 @@ public sealed class MemoryStoreTests
             Assert.Equal(MemoryProvenance.ObservedEvent, loaded.Provenance);
             Assert.Null(loaded.ValidFrom);
             Assert.Null(loaded.ValidUntil);
+            Assert.Null(loaded.FactKey);
+            Assert.Null(loaded.FactValue);
             Assert.Equal("legacy preference", loaded.Summary);
         }
         finally

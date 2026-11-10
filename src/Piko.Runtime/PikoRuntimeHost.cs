@@ -442,7 +442,8 @@ public sealed class PikoRuntimeHost
                     !Enum.TryParse<MemoryKind>(memoryRequest.Kind, ignoreCase: true, out var memoryKind) ||
                     memoryKind is not (MemoryKind.Profile or MemoryKind.Semantic or MemoryKind.Episodic) ||
                     string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
-                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now))
+                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now) ||
+                    !IsValidFactSlot(memoryRequest.FactKey, memoryRequest.FactValue))
                 {
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
@@ -463,7 +464,9 @@ public sealed class PikoRuntimeHost
                         "user.confirmed",
                         Provenance: MemoryProvenance.UserConfirmed,
                         ValidFrom: memoryRequest.ValidFrom?.ToUniversalTime() ?? now,
-                        ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime()),
+                        ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime(),
+                        FactKey: NormalizeFact(memoryRequest.FactKey),
+                        FactValue: NormalizeFact(memoryRequest.FactValue)),
                     now,
                     requestCancellation).ConfigureAwait(false);
                 return RuntimeResponse.Ok(request.RequestId, "memory.added", new { added = true });
@@ -483,7 +486,8 @@ public sealed class PikoRuntimeHost
                 if (memoryRequest is null ||
                     !Enum.TryParse<MemoryKind>(memoryRequest.Kind, ignoreCase: false, out var memoryKind) ||
                     memoryKind is not (MemoryKind.Profile or MemoryKind.Semantic or MemoryKind.Episodic) ||
-                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240)
+                    string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
+                    !IsValidFactSlot(memoryRequest.FactKey, memoryRequest.FactValue))
                 {
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
@@ -497,14 +501,17 @@ public sealed class PikoRuntimeHost
 
                 var related = await activeMemoryStore.FindRelatedAsync(
                     memoryKind, memoryRequest.Summary.Trim(), DateTimeOffset.UtcNow,
-                    cancellationToken: requestCancellation).ConfigureAwait(false);
+                    cancellationToken: requestCancellation,
+                    factKey: NormalizeFact(memoryRequest.FactKey),
+                    factValue: NormalizeFact(memoryRequest.FactValue)).ConfigureAwait(false);
                 return RuntimeResponse.Ok(request.RequestId, "memory.related", new RuntimeMemoryListResponse(
                     true,
                     "available",
-                    related.Select(hit => hit.Record).Select(memory => new RuntimeMemoryItem(
-                        memory.Id.ToString("N"), memory.Kind.ToString(), memory.CreatedAt, memory.UpdatedAt,
-                        memory.ExpiresAt, memory.Sensitivity.ToString(), memory.Summary,
-                        memory.Provenance.ToString(), memory.IsSuperseded, memory.ValidFrom, memory.ValidUntil)).ToArray()));
+                    related.Select(hit => new RuntimeMemoryItem(
+                        hit.Record.Id.ToString("N"), hit.Record.Kind.ToString(), hit.Record.CreatedAt, hit.Record.UpdatedAt,
+                        hit.Record.ExpiresAt, hit.Record.Sensitivity.ToString(), hit.Record.Summary,
+                        hit.Record.Provenance.ToString(), hit.Record.IsSuperseded, hit.Record.ValidFrom, hit.Record.ValidUntil,
+                        hit.Record.FactKey, hit.Record.FactValue, hit.ActivationReason)).ToArray()));
             }
 
             if (request.Type == "memory.update")
@@ -524,7 +531,8 @@ public sealed class PikoRuntimeHost
                     memoryRequest.ExpectedUpdatedAt == default ||
                     memoryRequest.Kind is not ("Profile" or "Semantic" or "Episodic") ||
                     string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
-                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now))
+                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now) ||
+                    !IsValidFactSlot(memoryRequest.FactKey, memoryRequest.FactValue))
                 {
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
@@ -543,7 +551,9 @@ public sealed class PikoRuntimeHost
                     "user.confirmed",
                     Provenance: MemoryProvenance.UserConfirmed,
                     ValidFrom: memoryRequest.ValidFrom?.ToUniversalTime() ?? now,
-                    ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime());
+                    ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime(),
+                    FactKey: NormalizeFact(memoryRequest.FactKey),
+                    FactValue: NormalizeFact(memoryRequest.FactValue));
                 var updated = await activeMemoryStore.UpdateAsync(
                         memoryId,
                         memoryRequest.ExpectedUpdatedAt,
@@ -571,7 +581,8 @@ public sealed class PikoRuntimeHost
                     memoryRequest.ExpectedUpdatedAt == default ||
                     memoryRequest.Kind is not ("Profile" or "Semantic" or "Episodic") ||
                     string.IsNullOrWhiteSpace(memoryRequest.Summary) || memoryRequest.Summary.Length > 240 ||
-                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now))
+                    !IsValidMemoryWindow(memoryRequest.ValidFrom, memoryRequest.ValidUntil, now) ||
+                    !IsValidFactSlot(memoryRequest.FactKey, memoryRequest.FactValue))
                 {
                     return RuntimeResponse.Fail(request.RequestId, "invalid_memory_payload");
                 }
@@ -586,7 +597,9 @@ public sealed class PikoRuntimeHost
                     new MemoryDraft(Enum.Parse<MemoryKind>(memoryRequest.Kind), summary, summary,
                         DataSensitivity.Low, "user.confirmed", Provenance: MemoryProvenance.UserConfirmed,
                         ValidFrom: memoryRequest.ValidFrom?.ToUniversalTime() ?? now,
-                        ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime()),
+                        ValidUntil: memoryRequest.ValidUntil?.ToUniversalTime(),
+                        FactKey: NormalizeFact(memoryRequest.FactKey),
+                        FactValue: NormalizeFact(memoryRequest.FactValue)),
                     now, requestCancellation).ConfigureAwait(false);
                 return RuntimeResponse.Ok(request.RequestId, "memory.replaced-one", new { replaced = replacement is not null });
             }
@@ -652,7 +665,9 @@ public sealed class PikoRuntimeHost
                             memory.Provenance.ToString(),
                             memory.IsSuperseded,
                             memory.ValidFrom,
-                            memory.ValidUntil)).ToArray()));
+                            memory.ValidUntil,
+                            memory.FactKey,
+                            memory.FactValue)).ToArray()));
             }
 
             if (request.Type == "memory.delete-all")
@@ -746,6 +761,13 @@ public sealed class PikoRuntimeHost
         return (validFrom is null || validFrom.Value >= now && validFrom.Value <= maximum) &&
                (validUntil is null || validUntil.Value <= maximum && validUntil.Value > (validFrom ?? now));
     }
+
+    private static bool IsValidFactSlot(string? factKey, string? factValue) =>
+        (factKey is null) == (factValue is null) &&
+        (factKey is null || (!string.IsNullOrWhiteSpace(factKey) && factKey.Trim().Length <= 80)) &&
+        (factValue is null || (!string.IsNullOrWhiteSpace(factValue) && factValue.Trim().Length <= 160));
+
+    private static string? NormalizeFact(string? value) => value?.Trim();
 
     private static RuntimeStatusSnapshot ApplyAcceptedUpdate(
         RuntimeStatusSnapshot status,

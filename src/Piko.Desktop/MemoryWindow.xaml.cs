@@ -5,7 +5,10 @@ namespace Piko.Desktop;
 
 public partial class MemoryWindow : Window
 {
-    private sealed record MemoryListItem(string Id, DateTimeOffset UpdatedAt, DateTimeOffset? ValidFrom, DateTimeOffset? ValidUntil, string Created, string Kind, string Sensitivity, string Provenance, string Status, string Validity, bool IsSuperseded, string Summary);
+    private sealed record MemoryListItem(string Id, DateTimeOffset UpdatedAt, DateTimeOffset? ValidFrom, DateTimeOffset? ValidUntil, string Created, string Kind, string Sensitivity, string Provenance, string Status, string Validity, bool IsSuperseded, string Summary, string? FactKey, string? FactValue)
+    {
+        public string FactSlot => FactKey is null ? "—" : $"{FactKey} = {FactValue}";
+    }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private readonly RuntimeProcessManager _runtime;
@@ -34,6 +37,13 @@ public partial class MemoryWindow : Window
         try
         {
             var summary = MemorySummaryText.Text.Trim();
+            var factKey = NormalizeFactInput(MemoryFactKeyText.Text);
+            var factValue = NormalizeFactInput(MemoryFactValueText.Text);
+            if ((factKey is null) != (factValue is null))
+            {
+                StatusText.Text = "结构化事实属性和值需要同时填写，或同时留空。";
+                return;
+            }
             if (MemoryValidFromPicker.SelectedDate is { } selectedStart && selectedStart.Date < DateTime.Today)
             {
                 StatusText.Text = "不支持回溯生效日期；如需记录过去事实，请在摘要中说明发生时间。";
@@ -46,7 +56,7 @@ public partial class MemoryWindow : Window
                 StatusText.Text = "结束日期必须晚于生效日期。";
                 return;
             }
-            var related = await _runtime.FindRelatedMemoriesAsync(kind, summary);
+            var related = await _runtime.FindRelatedMemoriesAsync(kind, summary, factKey: factKey, factValue: factValue);
             if (!related.Available)
             {
                 StatusText.Text = related.Reason == "memory_disabled"
@@ -58,9 +68,10 @@ public partial class MemoryWindow : Window
             if (related.Items.Count > 0)
             {
                 var closest = related.Items[0];
-                var options = string.Join("\n", related.Items.Take(3).Select(item => $"• {item.Summary}"));
+                var options = string.Join("\n", related.Items.Take(3).Select(item =>
+                    $"• [{FormatRelation(item.Relation)}] {(item.FactKey is null ? string.Empty : $"{item.FactKey}={item.FactValue}; ")}{item.Summary}"));
                 var choice = System.Windows.MessageBox.Show(
-                    $"发现相似的用户确认记忆：\n\n{options}\n\n“是”将最相似的一条保存为新版本；“否”将这条记忆单独保存；“取消”放弃操作。系统只判断文字相似，不判断事实是否矛盾。",
+                    $"发现相关的用户确认记忆：\n\n{options}\n\n“同一事实不同值”仅根据你提供的属性和值匹配，代表可能冲突，不代表系统知道哪条为真。\n仅有一个候选时，“是”将其保存为新版本；“否”将新事实单独保存；“取消”放弃操作。",
                     "检查相关记忆",
                     MessageBoxButton.YesNoCancel,
                     MessageBoxImage.Question,
@@ -72,13 +83,19 @@ public partial class MemoryWindow : Window
                 }
                 if (choice == MessageBoxResult.Yes)
                 {
+                    if (related.Items.Count != 1)
+                    {
+                        StatusText.Text = "有多个相关候选时不能自动选择替换对象；请取消后先整理重复项，或选择“否”单独保存。";
+                        return;
+                    }
                     if (validFrom is { } futureStart && futureStart > DateTimeOffset.UtcNow)
                     {
                         StatusText.Text = "未来生效的记忆不能立即替换当前版本；请选择“否”将其单独保存。";
                         return;
                     }
                     var replaced = await _runtime.ReplaceMemoryAsync(
-                        closest.Id, closest.UpdatedAt, kind, summary, validUntil: validUntil, validFrom: validFrom);
+                        closest.Id, closest.UpdatedAt, kind, summary, validUntil: validUntil, validFrom: validFrom,
+                        factKey: factKey, factValue: factValue);
                     if (!replaced)
                     {
                         StatusText.Text = "相关记忆已被修改或删除，请刷新后重试。";
@@ -89,16 +106,20 @@ public partial class MemoryWindow : Window
                 }
                 else
                 {
-                    await _runtime.AddMemoryAsync(kind, summary, validUntil: validUntil, validFrom: validFrom);
+                    await _runtime.AddMemoryAsync(kind, summary, validUntil: validUntil, validFrom: validFrom,
+                        factKey: factKey, factValue: factValue);
                     StatusText.Text = "已将相关内容作为独立记忆保存。";
                 }
             }
             else
             {
-                await _runtime.AddMemoryAsync(kind, summary, validUntil: validUntil, validFrom: validFrom);
+                await _runtime.AddMemoryAsync(kind, summary, validUntil: validUntil, validFrom: validFrom,
+                    factKey: factKey, factValue: factValue);
                 StatusText.Text = "已加密保存这条记忆。";
             }
             MemorySummaryText.Clear();
+            MemoryFactKeyText.Clear();
+            MemoryFactValueText.Clear();
             MemoryValidFromPicker.SelectedDate = null;
             MemoryValidUntilPicker.SelectedDate = null;
             await RefreshAsync();
@@ -168,6 +189,8 @@ public partial class MemoryWindow : Window
 
         MemoryValidUntilPicker.SelectedDate = selected.ValidUntil?.ToLocalTime().Date;
         MemoryValidFromPicker.SelectedDate = selected.ValidFrom?.ToLocalTime().Date;
+        MemoryFactKeyText.Text = selected.FactKey ?? string.Empty;
+        MemoryFactValueText.Text = selected.FactValue ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(MemorySummaryText.Text))
         {
@@ -192,6 +215,13 @@ public partial class MemoryWindow : Window
             }
             var validFrom = GetValidFrom(MemoryValidFromPicker.SelectedDate);
             var validUntil = GetValidUntilExclusive(MemoryValidUntilPicker.SelectedDate);
+            var factKey = NormalizeFactInput(MemoryFactKeyText.Text);
+            var factValue = NormalizeFactInput(MemoryFactValueText.Text);
+            if ((factKey is null) != (factValue is null))
+            {
+                StatusText.Text = "结构化事实属性和值需要同时填写，或同时留空。";
+                return;
+            }
             if (validUntil is { } until && until <= (validFrom ?? DateTimeOffset.UtcNow))
             {
                 StatusText.Text = "结束日期必须晚于生效日期。";
@@ -203,9 +233,12 @@ public partial class MemoryWindow : Window
                 return;
             }
             var replaced = await _runtime.ReplaceMemoryAsync(selected.Id, selected.UpdatedAt, kind,
-                MemorySummaryText.Text.Trim(), validUntil: validUntil, validFrom: validFrom);
+                MemorySummaryText.Text.Trim(), validUntil: validUntil, validFrom: validFrom,
+                factKey: factKey, factValue: factValue);
             StatusText.Text = replaced ? "已保存为新版本，旧版本已归档。" : "这条记忆已被修改、过期或删除，请刷新后重试。";
             MemorySummaryText.Clear();
+            MemoryFactKeyText.Clear();
+            MemoryFactValueText.Clear();
             MemoryValidFromPicker.SelectedDate = null;
             MemoryValidUntilPicker.SelectedDate = null;
             await RefreshAsync();
@@ -267,7 +300,9 @@ public partial class MemoryWindow : Window
                 GetMemoryStatus(item),
                 FormatValidity(item.ValidFrom, item.ValidUntil),
                 item.IsSuperseded,
-                item.Summary)).ToArray();
+                item.Summary,
+                item.FactKey,
+                item.FactValue)).ToArray();
             StatusText.Text = $"共 {result.Items.Count} 条。用户添加的偏好/语义记忆默认不过期；事件记忆按类型到期。";
         }
         catch (Exception exception)
@@ -285,6 +320,16 @@ public partial class MemoryWindow : Window
         if (item.ValidUntil is { } validUntil && validUntil <= now) return "已失效";
         return "当前";
     }
+
+    private static string? NormalizeFactInput(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string FormatRelation(string relation) => relation switch
+    {
+        "same_fact_same_value" => "相同属性和值",
+        "same_fact_different_value" => "同一属性不同值（可能冲突）",
+        _ => "文字相关"
+    };
 
     private static string FormatValidity(DateTimeOffset? validFrom, DateTimeOffset? validUntil)
     {

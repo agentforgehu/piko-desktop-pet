@@ -11,7 +11,9 @@ public sealed record MemoryDraft(
     DateTimeOffset? ExpiresAt = null,
     MemoryProvenance Provenance = MemoryProvenance.ObservedEvent,
     DateTimeOffset? ValidFrom = null,
-    DateTimeOffset? ValidUntil = null);
+    DateTimeOffset? ValidUntil = null,
+    string? FactKey = null,
+    string? FactValue = null);
 
 public sealed record MemoryRecord(
     Guid Id,
@@ -26,7 +28,9 @@ public sealed record MemoryRecord(
     MemoryProvenance Provenance = MemoryProvenance.ObservedEvent,
     bool IsSuperseded = false,
     DateTimeOffset? ValidFrom = null,
-    DateTimeOffset? ValidUntil = null);
+    DateTimeOffset? ValidUntil = null,
+    string? FactKey = null,
+    string? FactValue = null);
 
 public sealed record MemorySearchHit(
     MemoryRecord Record,
